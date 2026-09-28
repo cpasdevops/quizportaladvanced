@@ -25,7 +25,7 @@ function MainApp() {
   const handleAdminLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (adminPasscode.trim() !== ADMIN_PASSCODE) {
-      setAdminPassError('Incorrect admin passcode. Try ETHICS2026');
+      setAdminPassError('Incorrect admin passcode.');
       return;
     }
     await loginAsAdmin(adminPasscode.trim());
@@ -62,7 +62,7 @@ function MainApp() {
                         type="password"
                         value={adminPasscode}
                         onChange={(e) => setAdminPasscode(e.target.value)}
-                        placeholder="Enter passcode (ETHICS2026)"
+                        placeholder="Enter admin passcode"
                         className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500"
                         autoFocus
                       />
@@ -71,13 +71,6 @@ function MainApp() {
                     {adminPassError && (
                       <p className="mt-1.5 text-xs text-rose-400 font-semibold">{adminPassError}</p>
                     )}
-                  </div>
-
-                  <div className="text-[11px] text-slate-400 bg-slate-800/60 p-2.5 rounded-xl border border-slate-700/60 text-left">
-                    <span className="text-purple-300 font-bold">Preset Passcode:</span>{' '}
-                    <code className="bg-slate-700/60 text-slate-200 px-1.5 py-0.5 rounded font-mono font-bold">
-                      ETHICS2026
-                    </code>
                   </div>
 
                   <button

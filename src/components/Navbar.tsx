@@ -36,7 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab }) => {
   const submitAdminAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (passcode.trim() !== ADMIN_PASSCODE) {
-      setPassError('Incorrect admin passcode. Try ETHICS2026');
+      setPassError('Incorrect admin passcode.');
       return;
     }
     await loginAsAdmin(passcode.trim());
@@ -165,7 +165,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab }) => {
                     type="password"
                     value={passcode}
                     onChange={(e) => setPasscode(e.target.value)}
-                    placeholder="Enter passcode (ETHICS2026)"
+                    placeholder="Enter admin passcode"
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                     autoFocus
                   />
@@ -174,12 +174,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onSelectTab }) => {
                 {passError && (
                   <p className="mt-1.5 text-xs text-rose-400 font-medium">{passError}</p>
                 )}
-                <div className="mt-2 text-[11px] text-slate-400 bg-slate-800/60 p-2 rounded-lg border border-slate-700/50">
-                  <span className="text-purple-300 font-semibold">Demo Passcode:</span>{' '}
-                  <code className="text-slate-200 bg-slate-700/60 px-1 py-0.5 rounded font-mono">
-                    ETHICS2026
-                  </code>
-                </div>
               </div>
 
               <div className="flex gap-2">
