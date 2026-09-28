@@ -396,31 +396,13 @@ export function subscribeToQuizResults(quizId: string, callback: (results: QuizR
   }
 }
 
+import { uploadMaterialFile } from '../utils/fileStore';
+
 // ================= STUDY MATERIAL UPLOAD =================
 export async function uploadStudyMaterial(
   file: File,
   topicId: string
-): Promise<{ url: string; name: string; size: string }> {
-  const sizeFormatted = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
-  try {
-    const fileRef = storageRef(storage, `materials/${topicId}_${Date.now()}_${file.name}`);
-    const snapshot = await uploadBytes(fileRef, file);
-    const downloadUrl = await getDownloadURL(snapshot.ref);
-    return { url: downloadUrl, name: file.name, size: sizeFormatted };
-  } catch (err) {
-    console.warn('Firebase Storage upload error, falling back to data URL:', err);
-    // Base64 fallback for immediate offline/dev preview
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        resolve({
-          url: reader.result as string,
-          name: file.name,
-          size: sizeFormatted,
-        });
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
+): Promise<{ url: string; name: string; size: string; textPreview?: string }> {
+  return uploadMaterialFile(file, topicId);
 }
+
