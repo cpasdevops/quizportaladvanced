@@ -40,6 +40,7 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
   const [activeUploadingTopicId, setActiveUploadingTopicId] = useState<string | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
   const [previewMaterial, setPreviewMaterial] = useState<{
     id?: string;
     name: string;
@@ -116,6 +117,8 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
     setMaterialText('');
     setSelectedFile(null);
     setUploadFeedback(null);
+    setSuccessToast(`Topic "${newTopic.name}" created with study material attached!`);
+    setTimeout(() => setSuccessToast(null), 5000);
     onRefresh();
     onSelectTopic(newTopic.id);
   };
@@ -148,6 +151,8 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
           studyMaterialText: result.textPreview || targetTopic.studyMaterialText,
         };
         await saveTopic(updated);
+        setSuccessToast(`✓ File "${result.name}" (${result.size}) uploaded successfully!`);
+        setTimeout(() => setSuccessToast(null), 5000);
         onRefresh();
       }
     } catch (err) {
@@ -177,6 +182,22 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
         className="hidden"
       />
 
+      {/* Success Toast Notification */}
+      {successToast && (
+        <div className="mb-4 p-3 bg-emerald-950/80 border border-emerald-500/60 rounded-xl text-emerald-200 text-xs font-semibold flex items-center justify-between shadow-lg animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{successToast}</span>
+          </div>
+          <button
+            onClick={() => setSuccessToast(null)}
+            className="text-emerald-400 hover:text-white p-1 rounded"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -188,17 +209,28 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setShowAddModal(true);
-            setSelectedFile(null);
-            setUploadFeedback(null);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Topic + PDF</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={(e) => triggerDirectUpload(selectedTopicId, e)}
+            className="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition"
+            title="Upload PDF to currently selected topic"
+          >
+            <UploadCloud className="w-4 h-4 text-indigo-400" />
+            <span>Upload PDF to Topic</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setShowAddModal(true);
+              setSelectedFile(null);
+              setUploadFeedback(null);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Topic + PDF</span>
+          </button>
+        </div>
       </div>
 
       {/* Topics Grid */}

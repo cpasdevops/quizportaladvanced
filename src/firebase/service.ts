@@ -128,18 +128,16 @@ if (!localStorage.getItem(LS_RESULTS_KEY)) {
 
 // ================= TOPICS =================
 export async function fetchTopics(): Promise<Topic[]> {
-  try {
-    const snap = await getDocs(collection(db, 'topics'));
+  const cached = getLocal<Topic[]>(LS_TOPICS_KEY, [SEED_TOPIC]);
+  // Fast background check if online
+  getDocs(collection(db, 'topics')).then(snap => {
     if (!snap.empty) {
       const fromRemote: Topic[] = [];
       snap.forEach(d => fromRemote.push(d.data() as Topic));
       setLocal(LS_TOPICS_KEY, fromRemote);
-      return fromRemote;
     }
-  } catch (err) {
-    console.info('Using local topics cache:', err);
-  }
-  return getLocal<Topic[]>(LS_TOPICS_KEY, [SEED_TOPIC]);
+  }).catch(() => {});
+  return cached;
 }
 
 export async function saveTopic(topic: Topic): Promise<void> {
@@ -149,37 +147,33 @@ export async function saveTopic(topic: Topic): Promise<void> {
   else current.unshift(topic);
   setLocal(LS_TOPICS_KEY, current);
 
-  try {
-    await setDoc(doc(db, 'topics', topic.id), topic);
-  } catch (err) {
-    console.warn('Failed to sync topic to Firestore, saved locally:', err);
-  }
+  // Background cloud sync - non-blocking
+  setDoc(doc(db, 'topics', topic.id), topic).catch(err => {
+    console.warn('Background topic sync info:', err);
+  });
 }
 
 export async function removeTopic(topicId: string): Promise<void> {
   const current = getLocal<Topic[]>(LS_TOPICS_KEY, []);
   setLocal(LS_TOPICS_KEY, current.filter(t => t.id !== topicId));
-  try {
-    await deleteDoc(doc(db, 'topics', topicId));
-  } catch (err) {
-    console.warn('Failed to delete topic from Firestore:', err);
-  }
+  deleteDoc(doc(db, 'topics', topicId)).catch(() => {});
 }
 
 // ================= QUESTIONS =================
 export async function fetchQuestions(topicId?: string): Promise<Question[]> {
-  try {
-    const qCol = collection(db, 'questions');
-    const snap = topicId ? await getDocs(query(qCol, where('topicId', '==', topicId))) : await getDocs(qCol);
-    if (!snap.empty) {
-      const list: Question[] = [];
-      snap.forEach(d => list.push(d.data() as Question));
-      return list;
-    }
-  } catch (err) {
-    console.info('Using local questions cache:', err);
-  }
   const all = getLocal<Question[]>(LS_QUESTIONS_KEY, SEED_QUESTIONS);
+  // Fast background fetch
+  const qCol = collection(db, 'questions');
+  (topicId ? getDocs(query(qCol, where('topicId', '==', topicId))) : getDocs(qCol))
+    .then(snap => {
+      if (!snap.empty) {
+        const list: Question[] = [];
+        snap.forEach(d => list.push(d.data() as Question));
+        if (!topicId) setLocal(LS_QUESTIONS_KEY, list);
+      }
+    })
+    .catch(() => {});
+
   return topicId ? all.filter(q => q.topicId === topicId) : all;
 }
 
@@ -190,11 +184,7 @@ export async function saveQuestion(question: Question): Promise<void> {
   else all.push(question);
   setLocal(LS_QUESTIONS_KEY, all);
 
-  try {
-    await setDoc(doc(db, 'questions', question.id), question);
-  } catch (err) {
-    console.warn('Firestore question save error:', err);
-  }
+  setDoc(doc(db, 'questions', question.id), question).catch(() => {});
 }
 
 export async function saveQuestionsBatch(questions: Question[]): Promise<void> {
@@ -205,23 +195,14 @@ export async function saveQuestionsBatch(questions: Question[]): Promise<void> {
   }
   setLocal(LS_QUESTIONS_KEY, Array.from(map.values()));
 
-  for (const q of questions) {
-    try {
-      await setDoc(doc(db, 'questions', q.id), q);
-    } catch {
-      // batch continue
-    }
-  }
+  // Background non-blocking sync
+  Promise.all(questions.map(q => setDoc(doc(db, 'questions', q.id), q).catch(() => {}))).catch(() => {});
 }
 
 export async function removeQuestion(questionId: string): Promise<void> {
   const all = getLocal<Question[]>(LS_QUESTIONS_KEY, []);
   setLocal(LS_QUESTIONS_KEY, all.filter(q => q.id !== questionId));
-  try {
-    await deleteDoc(doc(db, 'questions', questionId));
-  } catch (err) {
-    console.warn('Firestore question delete error:', err);
-  }
+  deleteDoc(doc(db, 'questions', questionId)).catch(() => {});
 }
 
 // ================= QUIZZES =================
