@@ -1,0 +1,141 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents an authenticated user in the quiz portal with role-based access control.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Unique Firebase user ID" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "description": "User full name or display name" },
+        "role": { "type": "string", "enum": ["admin", "student"], "description": "Access role" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of creation" }
+      },
+      "required": ["userId", "email", "role", "displayName"]
+    },
+    "Topic": {
+      "title": "Topic",
+      "description": "Quiz subject area and study material topic.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Topic identifier" },
+        "name": { "type": "string", "description": "Topic name" },
+        "description": { "type": "string", "description": "Short description of topic syllabus" },
+        "materialName": { "type": "string", "description": "Name of uploaded PDF study material" },
+        "materialUrl": { "type": "string", "description": "Firebase Storage or data URL of study material" },
+        "questionCount": { "type": "number", "description": "Total approved questions in topic" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["id", "name"]
+    },
+    "Question": {
+      "title": "Question",
+      "description": "Individual quiz multiple-choice question.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Question identifier" },
+        "topicId": { "type": "string", "description": "Topic ID this question belongs to" },
+        "questionText": { "type": "string", "description": "The prompt or question text" },
+        "options": { "type": "array", "description": "List of 4 multiple-choice options" },
+        "correctOption": { "type": "number", "description": "Index of the correct option (0-3)" },
+        "explanation": { "type": "string", "description": "Educational explanation for the correct answer" },
+        "approved": { "type": "boolean", "description": "Whether approved by admin" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["id", "topicId", "questionText", "options", "correctOption"]
+    },
+    "Quiz": {
+      "title": "Quiz",
+      "description": "A live or scheduled 20-question quiz session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique Quiz session ID" },
+        "code": { "type": "string", "description": "Unique 6-character joining code" },
+        "title": { "type": "string", "description": "Quiz title" },
+        "topicId": { "type": "string", "description": "Associated topic ID" },
+        "topicName": { "type": "string", "description": "Name of topic" },
+        "status": { "type": "string", "enum": ["draft", "active", "completed", "cancelled"], "description": "Current lifecycle status" },
+        "totalQuestions": { "type": "number", "description": "Number of questions (exactly 20)" },
+        "timeLimitSeconds": { "type": "number", "description": "Quiz timer in seconds (e.g. 600 or 1200)" },
+        "questionIds": { "type": "array", "description": "IDs of the 20 approved questions" },
+        "participantCount": { "type": "number", "description": "Current active participants" },
+        "submissionCount": { "type": "number", "description": "Total submissions received" },
+        "createdBy": { "type": "string", "description": "Admin UID who created the quiz" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "startedAt": { "type": "string", "description": "Timestamp when quiz was launched" },
+        "endedAt": { "type": "string", "description": "Timestamp when quiz was closed" }
+      },
+      "required": ["id", "code", "title", "status", "totalQuestions", "timeLimitSeconds"]
+    },
+    "QuizAttempt": {
+      "title": "QuizAttempt",
+      "description": "A student's live in-progress attempt for a quiz.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique attempt ID" },
+        "quizId": { "type": "string", "description": "Quiz ID" },
+        "quizCode": { "type": "string", "description": "Quiz session code" },
+        "studentId": { "type": "string", "description": "Student UID or key" },
+        "studentName": { "type": "string", "description": "Student full name" },
+        "studentEmail": { "type": "string", "description": "Student email" },
+        "answers": { "type": "object", "description": "Map of questionId or index to selected option" },
+        "currentQuestionIndex": { "type": "number", "description": "Last active question index" },
+        "timeRemainingSeconds": { "type": "number", "description": "Remaining timer in seconds" },
+        "startedAt": { "type": "string", "description": "Start timestamp" },
+        "lastSavedAt": { "type": "string", "description": "Last auto-save timestamp" },
+        "isSubmitted": { "type": "boolean", "description": "Whether submitted" }
+      },
+      "required": ["id", "quizId", "studentId", "studentName"]
+    },
+    "Result": {
+      "title": "Result",
+      "description": "Permanent submitted quiz result and scoring breakdown.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Result ID" },
+        "quizId": { "type": "string", "description": "Quiz ID" },
+        "quizCode": { "type": "string", "description": "Quiz code" },
+        "quizTitle": { "type": "string", "description": "Title of the quiz" },
+        "studentId": { "type": "string", "description": "Student UID" },
+        "studentName": { "type": "string", "description": "Student display name" },
+        "studentEmail": { "type": "string", "description": "Student email" },
+        "score": { "type": "number", "description": "Correct answers out of 20" },
+        "totalQuestions": { "type": "number", "description": "Total questions (20)" },
+        "percentage": { "type": "number", "description": "Percentage score (0-100)" },
+        "correctCount": { "type": "number", "description": "Number of correct answers" },
+        "incorrectCount": { "type": "number", "description": "Number of incorrect answers" },
+        "unansweredCount": { "type": "number", "description": "Number of unanswered questions" },
+        "timeTakenSeconds": { "type": "number", "description": "Total duration in seconds" },
+        "breakdown": { "type": "array", "description": "Detailed question-by-question breakdown" },
+        "submittedAt": { "type": "string", "description": "Submission timestamp" }
+      },
+      "required": ["id", "quizId", "studentId", "studentName", "score", "totalQuestions", "percentage", "submittedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles with role assignment (admin or student)."
+    },
+    "/topics/{topicId}": {
+      "schema": { "$ref": "#/entities/Topic" },
+      "description": "Quiz topics and attached study material documents."
+    },
+    "/topics/{topicId}/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/Question" },
+      "description": "Question pool for a specific topic."
+    },
+    "/quizzes/{quizId}": {
+      "schema": { "$ref": "#/entities/Quiz" },
+      "description": "Live and archived quiz instances."
+    },
+    "/quizzes/{quizId}/attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/QuizAttempt" },
+      "description": "Active in-progress attempts for auto-saving student answers."
+    },
+    "/results/{resultId}": {
+      "schema": { "$ref": "#/entities/Result" },
+      "description": "Finalized quiz results with scoring and detailed attempt records."
+    }
+  }
+}

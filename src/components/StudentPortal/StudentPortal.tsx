@@ -1,0 +1,99 @@
+import React, { useState, useEffect } from 'react';
+import { Quiz, QuizResult, Question } from '../../types/quiz';
+import { fetchQuestions } from '../../firebase/service';
+import { useAuth } from '../../context/AuthContext';
+import { StudentJoin } from './StudentJoin';
+import { QuizInstructions } from './QuizInstructions';
+import { QuizPlayer } from './QuizPlayer';
+import { QuizResultView } from './QuizResultView';
+import { StudentHistory } from './StudentHistory';
+
+export const StudentPortal: React.FC = () => {
+  const { user } = useAuth();
+  const [viewState, setViewState] = useState<'join' | 'instructions' | 'playing' | 'result' | 'history'>('join');
+  const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
+  const [candidateName, setCandidateName] = useState(user?.displayName || '');
+  const [candidateEmail, setCandidateEmail] = useState(user?.email || '');
+  const [allQuestions, setAllQuestions] = useState<Question[]>([]);
+  const [completedResult, setCompletedResult] = useState<QuizResult | null>(null);
+
+  useEffect(() => {
+    loadQuestions();
+  }, []);
+
+  const loadQuestions = async () => {
+    const list = await fetchQuestions();
+    setAllQuestions(list);
+  };
+
+  const handleJoinSuccess = (quiz: Quiz, name: string, email?: string) => {
+    setActiveQuiz(quiz);
+    setCandidateName(name);
+    setCandidateEmail(email || '');
+    setViewState('instructions');
+  };
+
+  const handleStartQuiz = () => {
+    setViewState('playing');
+  };
+
+  const handleQuizSubmitted = (result: QuizResult) => {
+    setCompletedResult(result);
+    setViewState('result');
+  };
+
+  const handleInspectHistoricalResult = (result: QuizResult) => {
+    setCompletedResult(result);
+    setViewState('result');
+  };
+
+  return (
+    <div className="w-full min-h-[calc(100vh-4rem)] bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
+      {viewState === 'join' && (
+        <StudentJoin
+          onJoinSuccess={handleJoinSuccess}
+          onGoToHistory={() => setViewState('history')}
+        />
+      )}
+
+      {viewState === 'instructions' && activeQuiz && (
+        <QuizInstructions
+          quiz={activeQuiz}
+          studentName={candidateName}
+          onStartQuiz={handleStartQuiz}
+          onBack={() => setViewState('join')}
+        />
+      )}
+
+      {viewState === 'playing' && activeQuiz && (
+        <QuizPlayer
+          quiz={activeQuiz}
+          questions={allQuestions}
+          studentName={candidateName}
+          studentEmail={candidateEmail}
+          studentId={user?.uid || 'stu-' + candidateName.toLowerCase().replace(/\s+/g, '')}
+          onQuizSubmitted={handleQuizSubmitted}
+        />
+      )}
+
+      {viewState === 'result' && completedResult && (
+        <QuizResultView
+          result={completedResult}
+          onTakeAnother={() => {
+            setActiveQuiz(null);
+            setCompletedResult(null);
+            setViewState('join');
+          }}
+          onViewHistory={() => setViewState('history')}
+        />
+      )}
+
+      {viewState === 'history' && (
+        <StudentHistory
+          onBackToJoin={() => setViewState('join')}
+          onInspectResult={handleInspectHistoricalResult}
+        />
+      )}
+    </div>
+  );
+};

@@ -1,0 +1,8 @@
+{
+  "name": "QuizPortal Pro",
+  "description": "Modern live Quiz Portal with role-based Student and Admin access, PDF study material upload, QR code join, 20-question randomized tests, and real-time Firebase tracking.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

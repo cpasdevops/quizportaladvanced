@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'vidyasharma121@gmail.com' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))
+      );
+    }
+
+    // Topics & Questions
+    match /topics/{topicId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+
+      match /questions/{questionId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+    }
+
+    // Quizzes
+    match /quizzes/{quizId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantCount', 'submissionCount'])
+      );
+
+      match /attempts/{attemptId} {
+        allow read: if isSignedIn() && (
+          isAdmin() || resource.data.studentId == request.auth.uid
+        );
+        allow create, update: if isSignedIn() && (
+          request.resource.data.studentId == request.auth.uid || isAdmin()
+        );
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Results collection
+    match /results/{resultId} {
+      allow read: if isSignedIn() && (
+        isAdmin() || resource.data.studentId == request.auth.uid
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.studentId == request.auth.uid || isAdmin()
+      );
+      allow update, delete: if isAdmin();
+    }
+  }
+}
