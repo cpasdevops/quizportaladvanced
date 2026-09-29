@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Question, Topic } from '../../types/quiz';
 import { saveQuestion, saveQuestionsBatch, removeQuestion } from '../../firebase/service';
+import { generateQuestionsForTopic } from '../../services/aiQuestionGenerator';
+import {
+  parseQuestionsFromFileContent,
+  downloadSampleCsvTemplate,
+  downloadSampleJsonTemplate,
+} from '../../utils/questionParser';
 import {
   CheckCircle2,
   XCircle,
@@ -12,24 +18,56 @@ import {
   AlertTriangle,
   X,
   ListChecks,
+  Upload,
+  FileSpreadsheet,
+  FileText,
+  Download,
+  Loader2,
+  Check,
+  BookOpen,
+  Eye,
+  Layers,
 } from 'lucide-react';
 
 interface QuestionManagerProps {
   currentTopic: Topic | undefined;
+  topics: Topic[];
   questions: Question[];
+  onSelectTopic: (topicId: string) => void;
   onRefresh: () => void;
 }
 
 export const QuestionManager: React.FC<QuestionManagerProps> = ({
   currentTopic,
+  topics,
   questions,
+  onSelectTopic,
   onRefresh,
 }) => {
   const [editingQuestion, setEditingQuestion] = useState<Partial<Question> | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
 
-  const approvedCount = questions.filter((q) => q.approved).length;
-  const isReady = approvedCount === 20;
+  // AI Generator state
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [generateCount, setGenerateCount] = useState<number>(20);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedPreview, setGeneratedPreview] = useState<Question[] | null>(null);
+
+  // Bulk Upload state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadTopicId, setUploadTopicId] = useState<string>(currentTopic?.id || topics[0]?.id || '');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [pastedText, setPastedText] = useState<string>('');
+  const [uploadMode, setUploadMode] = useState<'file' | 'paste'>('file');
+  const [parsedQuestions, setParsedQuestions] = useState<Question[]>([]);
+  const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [isProcessingUpload, setIsProcessingUpload] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Filter questions for the selected topic
+  const topicQuestions = questions.filter((q) => q.topicId === (currentTopic?.id || ''));
+  const approvedCount = topicQuestions.filter((q) => q.approved).length;
+  const isReady = approvedCount >= 20;
 
   const toggleApproval = async (q: Question) => {
     const updated: Question = { ...q, approved: !q.approved };
@@ -38,7 +76,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
   };
 
   const handleBatchApproveFirst20 = async () => {
-    const updated = questions.map((q, idx) => ({
+    const updated = topicQuestions.map((q, idx) => ({
       ...q,
       approved: idx < 20,
     }));
@@ -73,289 +111,686 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
     onRefresh();
   };
 
-  // Auto-generate 20 questions from topic syllabus if needed
-  const handleAutoGenerate20 = async () => {
+  // --- AI GENERATOR ---
+  const handleRunAiGeneration = async () => {
     if (!currentTopic) return;
     setIsGenerating(true);
-
-    const generated: Question[] = [];
-    const topicTitle = currentTopic.name;
-
-    for (let i = 1; i <= 20; i++) {
-      generated.push({
-        id: `gen-${currentTopic.id}-${Date.now()}-${i}`,
-        topicId: currentTopic.id,
-        questionText: `[${topicTitle}] Comprehensive Assessment Question ${i}: Which principle best addresses ethical alignment and data validity in this domain?`,
-        options: [
-          `Core principle ${i}: Establish explicit baseline boundaries and rigorous validation`,
-          `Secondary principle ${i}: Rely only on unverified heuristic feedback loops`,
-          `Tertiary principle ${i}: Omit regular auditing and data governance frameworks`,
-          `Alternative principle ${i}: Treat subjective impressions as objective numeric data`,
-        ],
-        correctOption: 0,
-        explanation: `Comprehensive principle ${i} provides standardized data grounding and strict compliance with ethical and empirical verification.`,
-        approved: true,
-        createdAt: new Date().toISOString(),
-      });
+    try {
+      const generated = await generateQuestionsForTopic(currentTopic, generateCount);
+      setGeneratedPreview(generated);
+    } catch (err: any) {
+      alert(`Generation notice: ${err.message || 'Error generating questions'}`);
+    } finally {
+      setIsGenerating(false);
     }
+  };
 
-    await saveQuestionsBatch(generated);
-    setIsGenerating(false);
+  const handleSaveGeneratedQuestions = async () => {
+    if (!generatedPreview || generatedPreview.length === 0) return;
+    await saveQuestionsBatch(generatedPreview);
+    setGeneratedPreview(null);
+    setShowAiModal(false);
+    onRefresh();
+  };
+
+  // --- BULK UPLOAD ---
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadFile(file);
+    setIsProcessingUpload(true);
+    setParseErrors([]);
+
+    try {
+      const text = await file.text();
+      const targetId = uploadTopicId || currentTopic?.id || topics[0]?.id || 'default';
+      const { questions: parsed, errors } = parseQuestionsFromFileContent(text, targetId);
+      setParsedQuestions(parsed);
+      setParseErrors(errors);
+    } catch (err: any) {
+      setParseErrors([`Failed to read file: ${err.message}`]);
+    } finally {
+      setIsProcessingUpload(false);
+    }
+  };
+
+  const handleParsePastedText = () => {
+    if (!pastedText.trim()) return;
+    setIsProcessingUpload(true);
+    setParseErrors([]);
+    const targetId = uploadTopicId || currentTopic?.id || topics[0]?.id || 'default';
+    const { questions: parsed, errors } = parseQuestionsFromFileContent(pastedText, targetId);
+    setParsedQuestions(parsed);
+    setParseErrors(errors);
+    setIsProcessingUpload(false);
+  };
+
+  const handleConfirmUpload = async () => {
+    if (parsedQuestions.length === 0) return;
+    // Map to selected uploadTopicId
+    const targetId = uploadTopicId || currentTopic?.id || topics[0]?.id || 'default';
+    const mapped = parsedQuestions.map((q) => ({ ...q, topicId: targetId }));
+
+    await saveQuestionsBatch(mapped);
+    setShowUploadModal(false);
+    setUploadFile(null);
+    setPastedText('');
+    setParsedQuestions([]);
+    setParseErrors([]);
     onRefresh();
   };
 
   return (
-    <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <ListChecks className="w-5 h-5 text-indigo-400" />
-            <span>Question Bank & Approval (Strict 20-Question Requirement)</span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Topic: <span className="font-semibold text-indigo-300">{currentTopic?.name || 'All'}</span>{' '}
-            • Every launched quiz requires exactly 20 approved questions.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {questions.length < 20 && (
-            <button
-              onClick={handleAutoGenerate20}
-              disabled={isGenerating || !currentTopic}
-              className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-600/25 transition disabled:opacity-50"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>{isGenerating ? 'Generating 20...' : 'Auto-Generate 20 Questions'}</span>
-            </button>
-          )}
-
-          <button
-            onClick={() =>
-              setEditingQuestion({
-                topicId: currentTopic?.id || '',
-                questionText: '',
-                options: ['', '', '', ''],
-                correctOption: 0,
-                explanation: '',
-                approved: true,
-              })
-            }
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition"
-          >
-            <Plus className="w-4 h-4 text-indigo-400" />
-            <span>Add Question</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 20-Question Status Banner */}
-      <div
-        className={`p-4 rounded-xl mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border ${
-          isReady
-            ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
-            : approvedCount > 20
-            ? 'bg-amber-950/40 border-amber-500/50 text-amber-200'
-            : 'bg-indigo-950/40 border-indigo-500/50 text-indigo-200'
-        }`}
-      >
-        <div className="flex items-center gap-3">
-          {isReady ? (
-            <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
-          ) : (
-            <AlertTriangle className="w-6 h-6 text-amber-400 shrink-0" />
-          )}
+    <div className="space-y-6">
+      {/* Top Controls & Topic Filter */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="text-sm font-bold flex items-center gap-2">
-              <span>Approved Questions: {approvedCount} / 20</span>
-              {isReady && (
-                <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-wider font-extrabold">
-                  Quiz Ready
-                </span>
-              )}
+            <div className="flex items-center gap-2 mb-1">
+              <ListChecks className="w-5 h-5 text-emerald-400" />
+              <h2 className="text-xl font-bold text-white">Questions Hub & Question Pool</h2>
             </div>
-            <p className="text-xs opacity-85 mt-0.5">
-              {isReady
-                ? 'Exactly 20 questions approved! You can launch this live quiz now.'
-                : approvedCount > 20
-                ? `You have ${approvedCount} approved questions. Exactly 20 will be selected for the quiz.`
-                : `Need ${20 - approvedCount} more approved question(s) to start a quiz.`}
+            <p className="text-xs text-slate-400">
+              Upload custom questions with topics, generate questions on topic with AI, and curate the 20-question pool.
             </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                setShowUploadModal(true);
+                setUploadTopicId(currentTopic?.id || topics[0]?.id || '');
+                setParsedQuestions([]);
+                setParseErrors([]);
+              }}
+              className="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition"
+              title="Upload questions via CSV, JSON, or paste"
+            >
+              <Upload className="w-4 h-4 text-indigo-400" />
+              <span>Upload Questions</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setShowAiModal(true);
+                setGeneratedPreview(null);
+              }}
+              disabled={!currentTopic}
+              className="flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-600/25 transition"
+              title="Generate 20 questions based on topic syllabus"
+            >
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Generate Questions on Topic</span>
+            </button>
+
+            <button
+              onClick={() =>
+                setEditingQuestion({
+                  questionText: '',
+                  options: ['', '', '', ''],
+                  correctOption: 0,
+                  explanation: '',
+                  approved: true,
+                })
+              }
+              disabled={!currentTopic}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Single</span>
+            </button>
           </div>
         </div>
 
-        {questions.length >= 20 && !isReady && (
-          <button
-            onClick={handleBatchApproveFirst20}
-            className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition whitespace-nowrap"
-          >
-            Auto-Approve Top 20
-          </button>
-        )}
+        {/* Topic Selector & Status Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-slate-800">
+          <div className="flex items-center gap-3">
+            <label className="text-xs font-bold text-slate-300 shrink-0 flex items-center gap-1.5">
+              <BookOpen className="w-4 h-4 text-indigo-400" />
+              <span>Active Topic:</span>
+            </label>
+            <select
+              value={currentTopic?.id || ''}
+              onChange={(e) => onSelectTopic(e.target.value)}
+              className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 max-w-xs truncate font-medium"
+            >
+              {topics.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <span
+              className={`text-xs font-bold px-3 py-1 rounded-full border flex items-center gap-1.5 ${
+                isReady
+                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+              }`}
+            >
+              {isReady ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+              <span>
+                {approvedCount} / 20 Approved {isReady ? '(Quiz Ready)' : '(Need 20 for Live Quiz)'}
+              </span>
+            </span>
+
+            {topicQuestions.length >= 20 && approvedCount < 20 && (
+              <button
+                onClick={handleBatchApproveFirst20}
+                className="text-xs text-indigo-400 hover:text-indigo-300 font-bold hover:underline"
+              >
+                Approve First 20
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Questions List */}
       <div className="space-y-3">
-        {questions.length === 0 ? (
-          <div className="text-center py-12 border border-dashed border-slate-800 rounded-xl">
-            <HelpCircle className="w-10 h-10 text-slate-600 mx-auto mb-2" />
-            <p className="text-sm text-slate-400 font-medium">No questions in this topic yet.</p>
-            <p className="text-xs text-slate-500 mt-1">
-              Click &quot;Auto-Generate 20 Questions&quot; or &quot;Add Question&quot; above.
-            </p>
+        {topicQuestions.length === 0 ? (
+          <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-12 text-center space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center mx-auto text-indigo-400">
+              <HelpCircle className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">No questions in this topic pool yet</h3>
+              <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                Generate 20 comprehensive questions using AI from your topic syllabus, or upload a CSV / JSON file of questions.
+              </p>
+            </div>
+            <div className="flex justify-center gap-3 pt-2">
+              <button
+                onClick={() => {
+                  setShowAiModal(true);
+                  setGeneratedPreview(null);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-600/30 transition"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                <span>Auto-Generate 20 Questions</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowUploadModal(true);
+                  setUploadTopicId(currentTopic?.id || '');
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition"
+              >
+                <Upload className="w-4 h-4 text-indigo-400" />
+                <span>Upload CSV / JSON</span>
+              </button>
+            </div>
           </div>
         ) : (
-          questions.map((q, idx) => (
+          topicQuestions.map((q, idx) => (
             <div
               key={q.id}
-              className={`p-4 rounded-xl border transition ${
+              className={`p-5 rounded-2xl border transition ${
                 q.approved
-                  ? 'bg-slate-800/60 border-slate-700/70 hover:border-slate-600'
-                  : 'bg-slate-900/40 border-slate-800 opacity-60'
+                  ? 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                  : 'bg-slate-900/30 border-slate-800/60 opacity-60'
               }`}
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-700/80 text-indigo-300">
-                      Q{idx + 1}
-                    </span>
-                    <button
-                      onClick={() => toggleApproval(q)}
-                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 transition ${
-                        q.approved
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                          : 'bg-slate-700 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {q.approved ? (
-                        <>
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                          Approved
-                        </>
-                      ) : (
-                        <>
-                          <XCircle className="w-3 h-3" />
-                          Unapproved
-                        </>
-                      )}
-                    </button>
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <div className="flex items-start gap-3">
+                  <span className="font-mono text-xs font-extrabold text-indigo-400 bg-indigo-500/10 px-2.5 py-1 rounded-lg shrink-0">
+                    Q{idx + 1}
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-bold text-white leading-snug">
+                      {q.questionText}
+                    </h4>
                   </div>
-
-                  <p className="text-sm font-semibold text-white mb-3 leading-snug">
-                    {q.questionText}
-                  </p>
-
-                  {/* 4 Options preview */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    {q.options.map((opt, oIdx) => {
-                      const isCorrect = oIdx === q.correctOption;
-                      return (
-                        <div
-                          key={oIdx}
-                          className={`px-3 py-1.5 rounded-lg border flex items-center gap-2 ${
-                            isCorrect
-                              ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200 font-semibold'
-                              : 'bg-slate-800/40 border-slate-700/50 text-slate-300'
-                          }`}
-                        >
-                          <span
-                            className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                              isCorrect ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-400'
-                            }`}
-                          >
-                            {String.fromCharCode(65 + oIdx)}
-                          </span>
-                          <span className="truncate">{opt}</span>
-                          {isCorrect && (
-                            <span className="ml-auto text-[10px] text-emerald-400 font-bold">
-                              ✓ Correct
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {q.explanation && (
-                    <p className="mt-2 text-[11px] text-slate-400 bg-slate-800/40 p-2 rounded-lg border border-slate-700/40">
-                      <span className="text-indigo-300 font-semibold">Explanation:</span>{' '}
-                      {q.explanation}
-                    </p>
-                  )}
                 </div>
 
-                <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => toggleApproval(q)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase transition flex items-center gap-1 ${
+                      q.approved
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}
+                  >
+                    {q.approved ? (
+                      <>
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Approved</span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="w-3 h-3" />
+                        <span>Draft</span>
+                      </>
+                    )}
+                  </button>
+
                   <button
                     onClick={() => setEditingQuestion(q)}
-                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition"
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
                     title="Edit Question"
                   >
-                    <Edit3 className="w-4 h-4" />
+                    <Edit3 className="w-3.5 h-3.5" />
                   </button>
+
                   <button
                     onClick={() => handleDelete(q.id)}
-                    className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-slate-700 rounded-lg transition"
+                    className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition"
                     title="Delete Question"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
+
+              {/* Options Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 my-3 pl-9">
+                {q.options.map((opt, optIdx) => {
+                  const isCorrect = optIdx === q.correctOption;
+                  return (
+                    <div
+                      key={optIdx}
+                      className={`px-3 py-2 rounded-xl text-xs flex items-center gap-2 border transition ${
+                        isCorrect
+                          ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200 font-semibold'
+                          : 'bg-slate-800/40 border-slate-800 text-slate-300'
+                      }`}
+                    >
+                      <span
+                        className={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                          isCorrect ? 'bg-emerald-500 text-slate-950' : 'bg-slate-700 text-slate-300'
+                        }`}
+                      >
+                        {String.fromCharCode(65 + optIdx)}
+                      </span>
+                      <span className="truncate">{opt}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {q.explanation && (
+                <div className="pl-9 text-[11px] text-slate-400 italic">
+                  <span className="text-indigo-400 not-italic font-semibold">Explanation:</span>{' '}
+                  {q.explanation}
+                </div>
+              )}
             </div>
           ))
         )}
       </div>
 
-      {/* Edit / Create Question Modal */}
-      {editingQuestion && (
+      {/* --- MODAL 1: AI GENERATOR MODAL --- */}
+      {showAiModal && currentTopic && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] flex flex-col">
             <button
-              onClick={() => setEditingQuestion(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg"
+              onClick={() => setShowAiModal(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <h3 className="text-lg font-bold text-white mb-1">
-              {editingQuestion.id ? 'Edit Question' : 'Add Question'}
-            </h3>
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="w-5 h-5 text-amber-300" />
+              <h3 className="text-lg font-black text-white">Generate Questions on Topic (AI)</h3>
+            </div>
             <p className="text-xs text-slate-400 mb-4">
-              Enter question prompt and exactly 4 options. Select the correct radio option.
+              AI analyzes the syllabus notes and study material of{' '}
+              <strong className="text-indigo-300">&quot;{currentTopic.name}&quot;</strong> to craft balanced, 4-option multiple-choice questions.
+            </p>
+
+            {/* Config & Controls */}
+            {!generatedPreview ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-slate-800/50 rounded-2xl border border-slate-700/60 space-y-2">
+                  <div className="text-xs font-bold text-slate-300">Topic Information</div>
+                  <div className="text-xs text-white font-semibold">{currentTopic.name}</div>
+                  <p className="text-[11px] text-slate-400">{currentTopic.description}</p>
+                  {currentTopic.studyMaterialText && (
+                    <div className="text-[10px] text-emerald-400 flex items-center gap-1 mt-1">
+                      <Check className="w-3 h-3" />
+                      <span>Study material text attached ({currentTopic.studyMaterialText.length} characters)</span>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    How many questions to generate?
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[5, 10, 15, 20].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setGenerateCount(num)}
+                        className={`py-2 text-xs font-bold rounded-xl border transition ${
+                          generateCount === num
+                            ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        {num} Questions {num === 20 && '(Full Pool)'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-4 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowAiModal(false)}
+                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRunAiGeneration}
+                    disabled={isGenerating}
+                    className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-600/30 transition flex items-center gap-2"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
+                        <span>Generating {generateCount} Questions...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-amber-300" />
+                        <span>Generate {generateCount} Questions Now</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Generated Preview Screen */
+              <div className="flex-1 flex flex-col overflow-hidden space-y-4">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-emerald-400">
+                    ✓ Successfully generated {generatedPreview.length} questions!
+                  </span>
+                  <span className="text-slate-400">Review before saving to pool</span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                  {generatedPreview.map((gq, i) => (
+                    <div key={i} className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 text-xs">
+                      <div className="font-bold text-white mb-2">
+                        {i + 1}. {gq.questionText}
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 pl-2 mb-2">
+                        {gq.options.map((opt, oi) => (
+                          <div
+                            key={oi}
+                            className={`p-1.5 rounded-lg border text-[11px] ${
+                              oi === gq.correctOption
+                                ? 'bg-emerald-950/50 border-emerald-500/50 text-emerald-300 font-semibold'
+                                : 'bg-slate-900 border-slate-800 text-slate-400'
+                            }`}
+                          >
+                            <span className="font-bold mr-1">{String.fromCharCode(65 + oi)})</span>
+                            {opt}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-[10px] text-slate-400 pl-2">
+                        <strong className="text-indigo-300">Explanation:</strong> {gq.explanation}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-2 flex justify-between items-center gap-3 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setGeneratedPreview(null)}
+                    className="text-xs text-slate-400 hover:text-white"
+                  >
+                    ← Re-generate
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveGeneratedQuestions}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center gap-2"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Approve & Save {generatedPreview.length} Questions to Topic</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL 2: BULK UPLOAD QUESTIONS MODAL --- */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] flex flex-col">
+            <button
+              onClick={() => setShowUploadModal(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2 mb-1">
+              <Upload className="w-5 h-5 text-indigo-400" />
+              <h3 className="text-lg font-black text-white">Upload Questions with Topics</h3>
+            </div>
+            <p className="text-xs text-slate-400 mb-4">
+              Import questions in bulk via CSV, JSON, or plain text Q&A format.
+            </p>
+
+            {/* Target Topic Selector */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-slate-300 mb-1 flex items-center gap-1.5">
+                <BookOpen className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Assign to Topic *</span>
+              </label>
+              <select
+                value={uploadTopicId}
+                onChange={(e) => setUploadTopicId(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+              >
+                {topics.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Mode Selector & Download Templates */}
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setUploadMode('file')}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                    uploadMode === 'file' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  File Upload (CSV / JSON)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUploadMode('paste')}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition ${
+                    uploadMode === 'paste' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Paste Text / Q&A
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={downloadSampleCsvTemplate}
+                  className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 font-medium"
+                  title="Download Sample CSV"
+                >
+                  <Download className="w-3 h-3" />
+                  <span>Sample CSV</span>
+                </button>
+                <span className="text-slate-600">•</span>
+                <button
+                  type="button"
+                  onClick={downloadSampleJsonTemplate}
+                  className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 font-medium"
+                  title="Download Sample JSON"
+                >
+                  <Download className="w-3 h-3" />
+                  <span>Sample JSON</span>
+                </button>
+              </div>
+            </div>
+
+            {/* File Mode */}
+            {uploadMode === 'file' ? (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-2xl p-6 text-center cursor-pointer bg-slate-800/40 hover:bg-slate-800/70 transition my-2"
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.json,.txt"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <FileSpreadsheet className="w-10 h-10 text-indigo-400 mx-auto mb-2" />
+                <p className="text-xs font-bold text-white">
+                  {uploadFile ? uploadFile.name : 'Click to select or drop CSV / JSON file'}
+                </p>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Supports comma-delimited CSV, semicolon-delimited CSV, and JSON arrays.
+                </p>
+              </div>
+            ) : (
+              /* Paste Mode */
+              <div className="my-2">
+                <textarea
+                  rows={6}
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  placeholder={`Paste Q&A format or JSON, e.g.:\n\n1. What is ethical AI?\nA) Fair and transparent data practices\nB) Ignoring model bias\nC) Skipping governance\nD) Unverified scraping\nAnswer: A\nExplanation: Ethical AI requires fairness and transparency.`}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-xs text-white placeholder-slate-600 font-mono focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleParsePastedText}
+                  disabled={!pastedText.trim()}
+                  className="mt-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition"
+                >
+                  Parse Pasted Questions
+                </button>
+              </div>
+            )}
+
+            {/* Feedback / Parsed results preview */}
+            {parsedQuestions.length > 0 && (
+              <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs flex items-center justify-between my-2">
+                <span className="font-bold">
+                  ✓ Ready to import {parsedQuestions.length} questions into selected topic!
+                </span>
+                <span className="text-[11px] text-emerald-400">
+                  {parsedQuestions.filter((q) => q.approved).length} marked approved
+                </span>
+              </div>
+            )}
+
+            {parseErrors.length > 0 && (
+              <div className="p-3 bg-rose-950/40 border border-rose-800/40 rounded-xl text-rose-300 text-xs space-y-1 my-2 max-h-24 overflow-y-auto">
+                {parseErrors.map((err, idx) => (
+                  <div key={idx}>⚠️ {err}</div>
+                ))}
+              </div>
+            )}
+
+            <div className="pt-4 flex justify-end gap-3 mt-auto">
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmUpload}
+                disabled={parsedQuestions.length === 0}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center gap-1.5"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Import {parsedQuestions.length} Questions</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL 3: SINGLE QUESTION EDIT/CREATE --- */}
+      {editingQuestion && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setEditingQuestion(null)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="text-lg font-black text-white mb-1">
+              {editingQuestion.id ? 'Edit Question' : 'Add New Question'}
+            </h3>
+            <p className="text-xs text-slate-400 mb-5">
+              Topic: <strong className="text-indigo-400">{currentTopic?.name}</strong>
             </p>
 
             <form onSubmit={handleSaveQuestion} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Question Prompt *
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  Question Text *
                 </label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   required
                   value={editingQuestion.questionText || ''}
                   onChange={(e) =>
                     setEditingQuestion({ ...editingQuestion, questionText: e.target.value })
                   }
-                  placeholder="e.g. Which of these is an example of continuous numerical data?"
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  placeholder="Enter the complete question prompt..."
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               {/* 4 Options */}
               <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-300">
-                  Multiple Choice Options (Select radio for Correct Answer) *
+                <label className="block text-xs font-bold text-slate-300">
+                  Multiple Choice Options (Select the correct option with radio)
                 </label>
                 {(editingQuestion.options || ['', '', '', '']).map((opt, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <input
                       type="radio"
-                      name="correctOptionRadio"
-                      checked={editingQuestion.correctOption === i}
+                      name="correctOption"
+                      checked={(editingQuestion.correctOption ?? 0) === i}
                       onChange={() => setEditingQuestion({ ...editingQuestion, correctOption: i })}
-                      className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-slate-600 bg-slate-700"
+                      className="accent-indigo-500 w-4 h-4 cursor-pointer shrink-0"
                     />
                     <span className="font-bold text-xs text-slate-400 w-4">
                       {String.fromCharCode(65 + i)}
@@ -369,16 +804,16 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                         newOpts[i] = e.target.value;
                         setEditingQuestion({ ...editingQuestion, options: newOpts });
                       }}
-                      placeholder={`Option ${String.fromCharCode(65 + i)}`}
-                      className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                      placeholder={`Option ${String.fromCharCode(65 + i)} text...`}
+                      className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                     />
                   </div>
                 ))}
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Explanation / Solution Note (Shown on Result page)
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  Explanation / Rationale
                 </label>
                 <textarea
                   rows={2}
@@ -386,22 +821,23 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                   onChange={(e) =>
                     setEditingQuestion({ ...editingQuestion, explanation: e.target.value })
                   }
-                  placeholder="Explain why this option is correct for educational feedback..."
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                  placeholder="Why is this answer correct? Explanations appear on the results breakdown."
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
-              <div className="flex items-center gap-2 pt-2">
-                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editingQuestion.approved ?? true}
-                    onChange={(e) =>
-                      setEditingQuestion({ ...editingQuestion, approved: e.target.checked })
-                    }
-                    className="rounded bg-slate-700 border-slate-600 text-indigo-600"
-                  />
-                  <span>Mark as Approved for 20-Question Quiz Pool</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="approvedCheck"
+                  checked={editingQuestion.approved ?? true}
+                  onChange={(e) =>
+                    setEditingQuestion({ ...editingQuestion, approved: e.target.checked })
+                  }
+                  className="accent-emerald-500 rounded"
+                />
+                <label htmlFor="approvedCheck" className="text-xs font-semibold text-slate-300 cursor-pointer">
+                  Approved for live 20-question randomized pool
                 </label>
               </div>
 
