@@ -1,77 +1,47 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default-deny catch-all
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.email == 'vidyasharma121@gmail.com' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
-      );
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
     // Users collection
     match /users/{userId} {
-      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
-      allow list: if isAdmin();
-      allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isSignedIn() && (
-        isAdmin() ||
-        (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']))
-      );
+      allow read, write: if true;
     }
 
-    // Topics & Questions
+    // Topics & Nested Questions
     match /topics/{topicId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow read, write: if true;
 
       match /questions/{questionId} {
-        allow read: if isSignedIn();
-        allow write: if isAdmin();
+        allow read, write: if true;
       }
     }
 
-    // Quizzes
+    // Top-level Questions pool
+    match /questions/{questionId} {
+      allow read, write: if true;
+    }
+
+    // Quizzes (Quiz Sessions - Live and Draft)
     match /quizzes/{quizId} {
-      allow read: if isSignedIn();
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (
-        isSignedIn() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participantCount', 'submissionCount'])
-      );
+      allow read, write: if true;
 
       match /attempts/{attemptId} {
-        allow read: if isSignedIn() && (
-          isAdmin() || resource.data.studentId == request.auth.uid
-        );
-        allow create, update: if isSignedIn() && (
-          request.resource.data.studentId == request.auth.uid || isAdmin()
-        );
-        allow delete: if isAdmin();
+        allow read, write: if true;
       }
     }
 
-    // Results collection
+    // Attempts and Submissions
+    match /attempts/{attemptId} {
+      allow read, write: if true;
+    }
+
+    // Results audit records
     match /results/{resultId} {
-      allow read: if isSignedIn() && (
-        isAdmin() || resource.data.studentId == request.auth.uid
-      );
-      allow create: if isSignedIn() && (
-        request.resource.data.studentId == request.auth.uid || isAdmin()
-      );
-      allow update, delete: if isAdmin();
+      allow read, write: if true;
+    }
+
+    // Default match for other documents
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }

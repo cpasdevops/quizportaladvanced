@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { fetchQuizByCode, fetchQuizzes } from '../../firebase/service';
+import { fetchQuizByCode, subscribeToAllQuizzes } from '../../firebase/service';
 import { Quiz } from '../../types/quiz';
 import { QRScannerModal } from '../QRScannerModal';
 import {
@@ -46,34 +46,16 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
       setQuizCode(codeParam.toUpperCase());
     }
 
-    loadLiveQuizzes();
-    const interval = setInterval(loadLiveQuizzes, 2000);
-
-    // Instant local status update sync (same-window + cross-tab)
-    const handleStatusChange = () => {
-      loadLiveQuizzes();
-    };
-    window.addEventListener('quiz-status-changed', handleStatusChange);
-    window.addEventListener('storage', handleStatusChange);
+    // Subscribe to all quizzes with realtime Firestore snapshot + cross-tab localStorage broadcast
+    const unsubscribe = subscribeToAllQuizzes((allQuizzes) => {
+      const onlyLive = allQuizzes.filter((q) => q.status === 'active');
+      setLiveQuizzes(onlyLive);
+    });
 
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('quiz-status-changed', handleStatusChange);
-      window.removeEventListener('storage', handleStatusChange);
+      unsubscribe();
     };
   }, []);
-
-  // ONLY fetch and show LIVE tests to students
-  const loadLiveQuizzes = async () => {
-    try {
-      const list = await fetchQuizzes();
-      // Strictly show ONLY quizzes with status === 'active'
-      const onlyLive = list.filter((q) => q.status === 'active');
-      setLiveQuizzes(onlyLive);
-    } catch {
-      // Non-fatal
-    }
-  };
 
   const handleJoin = async (overrideCode?: string, e?: React.FormEvent) => {
     if (e) e.preventDefault();

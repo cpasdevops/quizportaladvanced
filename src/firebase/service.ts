@@ -234,6 +234,31 @@ export async function removeQuestion(questionId: string): Promise<void> {
 // Broadcast key for instant cross-tab sync
 export const LS_QUIZ_STATUS_BROADCAST = 'qp_broadcast_status_v1';
 
+// Helper to merge local and remote quizzes with local active priority
+function mergeQuizzes(localList: Quiz[], remoteList: Quiz[]): Quiz[] {
+  const map = new Map<string, Quiz>();
+  // 1. Put remote first
+  for (const r of remoteList) {
+    map.set(r.id, r);
+  }
+  // 2. Local takes priority
+  for (const l of localList) {
+    const rem = map.get(l.id);
+    if (rem) {
+      const isActive = l.status === 'active' || rem.status === 'active';
+      const isCompleted = !isActive && (l.status === 'completed' || rem.status === 'completed');
+      map.set(l.id, {
+        ...rem,
+        ...l,
+        status: isActive ? 'active' : isCompleted ? 'completed' : l.status,
+      });
+    } else {
+      map.set(l.id, l);
+    }
+  }
+  return Array.from(map.values());
+}
+
 // ================= QUIZZES =================
 export async function fetchQuizzes(): Promise<Quiz[]> {
   const localList = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
@@ -243,15 +268,9 @@ export async function fetchQuizzes(): Promise<Quiz[]> {
       if (!snap.empty) {
         const remoteList: Quiz[] = [];
         snap.forEach(d => remoteList.push(d.data() as Quiz));
-
-        const mergedMap = new Map<string, Quiz>();
-        for (const q of getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ])) {
-          mergedMap.set(q.id, q);
-        }
-        for (const r of remoteList) {
-          mergedMap.set(r.id, { ...mergedMap.get(r.id), ...r });
-        }
-        setLocal(LS_QUIZZES_KEY, Array.from(mergedMap.values()));
+        const currentLocal = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
+        const merged = mergeQuizzes(currentLocal, remoteList);
+        setLocal(LS_QUIZZES_KEY, merged);
       }
     })
     .catch(() => {});
@@ -269,7 +288,10 @@ export async function fetchQuizByCode(code: string): Promise<Quiz | null> {
     const qCol = collection(db, 'quizzes');
     const snap = await getDocs(query(qCol, where('code', '==', upper)));
     if (!snap.empty) {
-      return snap.docs[0].data() as Quiz;
+      const q = snap.docs[0].data() as Quiz;
+      all.unshift(q);
+      setLocal(LS_QUIZZES_KEY, all);
+      return q;
     }
   } catch (err) {
     console.info('Quiz lookup via Firestore failed:', err);
@@ -286,6 +308,7 @@ export async function saveQuiz(quiz: Quiz): Promise<void> {
 
   try {
     localStorage.setItem(LS_QUIZ_STATUS_BROADCAST, JSON.stringify({ quizId: quiz.id, status: quiz.status, t: Date.now() }));
+    window.dispatchEvent(new CustomEvent('quiz-status-changed', { detail: { quizId: quiz.id, status: quiz.status } }));
   } catch {}
 
   // Background non-blocking sync
@@ -298,6 +321,10 @@ export async function removeQuiz(quizId: string): Promise<void> {
   const all = getLocal<Quiz[]>(LS_QUIZZES_KEY, []);
   setLocal(LS_QUIZZES_KEY, all.filter(q => q.id !== quizId));
   deleteDoc(doc(db, 'quizzes', quizId)).catch(() => {});
+  try {
+    localStorage.setItem(LS_QUIZ_STATUS_BROADCAST, JSON.stringify({ quizId, deleted: true, t: Date.now() }));
+    window.dispatchEvent(new CustomEvent('quiz-status-changed', { detail: { quizId, deleted: true } }));
+  } catch {}
 }
 
 export async function updateQuizStatus(quizId: string, status: QuizStatus): Promise<void> {
@@ -310,18 +337,64 @@ export async function updateQuizStatus(quizId: string, status: QuizStatus): Prom
     setLocal(LS_QUIZZES_KEY, all);
   }
 
-  // Cross-tab instant notification via localStorage event
+  // Cross-tab + same-window instant notifications
   try {
     localStorage.setItem(LS_QUIZ_STATUS_BROADCAST, JSON.stringify({ quizId, status, t: Date.now() }));
+    window.dispatchEvent(new CustomEvent('quiz-status-changed', { detail: { quizId, status } }));
   } catch {}
 
-  // Non-blocking Firestore update (does not stall UI!)
+  // Firestore update
   const payload: Partial<Quiz> = { status };
   if (status === 'active') payload.startedAt = new Date().toISOString();
   if (status === 'completed' || status === 'cancelled') payload.endedAt = new Date().toISOString();
-  updateDoc(doc(db, 'quizzes', quizId), payload).catch(err => {
+  setDoc(doc(db, 'quizzes', quizId), payload, { merge: true }).catch(err => {
     console.warn('Firestore quiz status update error:', err);
   });
+}
+
+/**
+ * Real-time subscription for all quizzes (used by Student Portal to show live tests instantly)
+ */
+export function subscribeToAllQuizzes(callback: (quizzes: Quiz[]) => void): () => void {
+  // 1. Immediate local emit (0ms)
+  const initial = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
+  callback(initial);
+
+  // 2. Real-time Firestore listener
+  let unsubFirestore = () => {};
+  try {
+    unsubFirestore = onSnapshot(collection(db, 'quizzes'), snap => {
+      if (!snap.empty) {
+        const remoteList: Quiz[] = [];
+        snap.forEach(d => remoteList.push(d.data() as Quiz));
+        const currentLocal = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
+        const merged = mergeQuizzes(currentLocal, remoteList);
+        setLocal(LS_QUIZZES_KEY, merged);
+        callback(merged);
+      }
+    }, err => {
+      console.warn('Firestore quiz snapshot notice:', err);
+    });
+  } catch {}
+
+  // 3. Local events handler
+  const handleLocalChange = () => {
+    const updated = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
+    callback(updated);
+  };
+
+  window.addEventListener('storage', handleLocalChange);
+  window.addEventListener('quiz-status-changed', handleLocalChange);
+
+  // 4. Polling safeguard
+  const timer = setInterval(handleLocalChange, 1000);
+
+  return () => {
+    unsubFirestore();
+    window.removeEventListener('storage', handleLocalChange);
+    window.removeEventListener('quiz-status-changed', handleLocalChange);
+    clearInterval(timer);
+  };
 }
 
 export function subscribeToQuiz(quizId: string, callback: (quiz: Quiz | null) => void): () => void {
