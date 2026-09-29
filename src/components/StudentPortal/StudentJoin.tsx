@@ -36,7 +36,7 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [availableQuizzes, setAvailableQuizzes] = useState<Quiz[]>([]);
+  const [liveQuizzes, setLiveQuizzes] = useState<Quiz[]>([]);
 
   // Check URL params for auto-filled code (e.g. scanned from QR link)
   useEffect(() => {
@@ -46,16 +46,28 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
       setQuizCode(codeParam.toUpperCase());
     }
 
-    loadAvailableQuizzes();
-    const interval = setInterval(loadAvailableQuizzes, 3000);
-    return () => clearInterval(interval);
+    loadLiveQuizzes();
+    const interval = setInterval(loadLiveQuizzes, 2000);
+
+    // Instant local status update sync
+    const handleStatusChange = () => {
+      loadLiveQuizzes();
+    };
+    window.addEventListener('quiz-status-changed', handleStatusChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('quiz-status-changed', handleStatusChange);
+    };
   }, []);
 
-  const loadAvailableQuizzes = async () => {
+  // ONLY fetch and show LIVE tests to students
+  const loadLiveQuizzes = async () => {
     try {
       const list = await fetchQuizzes();
-      // Filter out cancelled quizzes
-      setAvailableQuizzes(list.filter((q) => q.status !== 'cancelled'));
+      // Strictly show ONLY quizzes with status === 'active'
+      const onlyLive = list.filter((q) => q.status === 'active');
+      setLiveQuizzes(onlyLive);
     } catch {
       // Non-fatal
     }
@@ -89,7 +101,14 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
       }
 
       if (quiz.status === 'completed' || quiz.status === 'cancelled') {
-        setError('This quiz session has already ended. Ask the host to start a new quiz session.');
+        setError('This quiz session has already ended. It is no longer accepting submissions.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Strictly enforce that the quiz MUST be live (active)
+      if (quiz.status !== 'active') {
+        setError(`Quiz session "${codeToUse}" is not live yet. Please wait for your teacher or admin to start the test.`);
         setIsLoading(false);
         return;
       }
@@ -123,85 +142,74 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-      {/* Active & Scheduled Sessions Banner */}
-      {availableQuizzes.length > 0 && (
-        <div className="bg-slate-900/90 border border-indigo-500/40 rounded-3xl p-6 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+      {/* SHOW ONLY LIVE TESTS TO STUDENTS */}
+      {liveQuizzes.length > 0 ? (
+        <div className="bg-slate-900/90 border border-emerald-500/50 rounded-3xl p-6 shadow-2xl shadow-emerald-950/20 backdrop-blur-xl relative overflow-hidden">
           <div className="flex items-center justify-between gap-2 mb-4">
-            <div className="flex items-center gap-2">
-              <Radio className="w-5 h-5 text-indigo-400 animate-pulse" />
-              <h2 className="text-base font-bold text-white">Live & Scheduled Quiz Sessions</h2>
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                <Radio className="w-5 h-5 text-emerald-400" />
+                <span>Live Active Tests ({liveQuizzes.length})</span>
+              </h2>
             </div>
-            <span className="text-[10px] text-slate-400 font-mono">
-              Auto-updating
+            <span className="text-[10px] text-emerald-400 font-mono font-bold bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full uppercase tracking-wider">
+              ● Live Now
             </span>
           </div>
 
           <div className="space-y-3">
-            {availableQuizzes.map((q) => {
-              const isLive = q.status === 'active';
-              const isDraft = q.status === 'draft';
-              const isDone = q.status === 'completed';
-
-              return (
-                <div
-                  key={q.id}
-                  className={`p-4 rounded-2xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                    isLive
-                      ? 'bg-indigo-950/40 border-indigo-500/60 shadow-lg shadow-indigo-900/20'
-                      : 'bg-slate-800/50 border-slate-700/60'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span
-                        className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
-                          isLive
-                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 animate-pulse'
-                            : isDraft
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                            : 'bg-slate-700 text-slate-400 border-slate-600'
-                        }`}
-                      >
-                        {isLive ? '● Live Now' : isDraft ? '⏳ Waiting for Admin to Start' : 'Completed'}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        Topic: <span className="text-slate-300 font-semibold">{q.topicName}</span>
-                      </span>
-                    </div>
-
-                    <h3 className="font-extrabold text-white text-base leading-snug">
-                      {q.title}
-                    </h3>
+            {liveQuizzes.map((q) => (
+              <div
+                key={q.id}
+                className="p-4 rounded-2xl border bg-gradient-to-r from-emerald-950/40 via-indigo-950/30 to-slate-900 border-emerald-500/50 shadow-lg shadow-emerald-900/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition hover:border-emerald-400"
+              >
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border bg-emerald-500/20 text-emerald-400 border-emerald-500/40 animate-pulse">
+                      ● Live Active
+                    </span>
+                    <span className="text-xs text-slate-300">
+                      Topic: <span className="text-white font-semibold">{q.topicName}</span>
+                    </span>
                   </div>
 
-                  {/* Code Badge and Join Button */}
-                  <div className="flex items-center gap-2 sm:self-center shrink-0">
-                    <div className="bg-slate-900/90 border border-slate-700/80 px-3 py-1.5 rounded-xl text-center">
-                      <div className="text-[9px] uppercase font-bold text-slate-400">Code</div>
-                      <div className="font-mono text-base font-black text-indigo-300 tracking-wider">
-                        {q.code}
-                      </div>
-                    </div>
-
-                    {!isDone && (
-                      <button
-                        type="button"
-                        onClick={() => quickJoin(q.code)}
-                        className={`px-3.5 py-2 text-xs font-bold rounded-xl shadow transition flex items-center gap-1.5 ${
-                          isLive
-                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
-                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30'
-                        }`}
-                      >
-                        <span>{isLive ? 'Join Test' : 'Join Lobby'}</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                  <h3 className="font-extrabold text-white text-base leading-snug">
+                    {q.title}
+                  </h3>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    {q.totalQuestions || 20} Questions • {q.timeLimitMinutes} minutes
                   </div>
                 </div>
-              );
-            })}
+
+                {/* Session Code Badge & Quick Join Button */}
+                <div className="flex items-center gap-2 sm:self-center shrink-0">
+                  <div className="bg-slate-900/90 border border-slate-700/80 px-3.5 py-1.5 rounded-xl text-center">
+                    <div className="text-[9px] uppercase font-bold text-slate-400">Code</div>
+                    <div className="font-mono text-base font-black text-emerald-300 tracking-wider">
+                      {q.code}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => quickJoin(q.code)}
+                    className="px-4 py-2.5 text-xs font-bold rounded-xl shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 transition flex items-center gap-1.5 transform active:scale-95"
+                  >
+                    <span>Join Test</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
+        </div>
+      ) : (
+        <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-4 text-center">
+          <p className="text-xs text-slate-400 flex items-center justify-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-slate-600" />
+            <span>No live tests currently running. When your teacher starts a quiz session, it will automatically appear here.</span>
+          </p>
         </div>
       )}
 
@@ -221,7 +229,7 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
               Student Quiz Portal
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-sm mx-auto">
-              Scan the projected QR Code with your camera or enter the Session Code below.
+              Scan the projected QR Code with your camera or enter the live Session Code below.
             </p>
           </div>
 
@@ -261,7 +269,7 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
                   <Hash className="w-3.5 h-3.5 text-indigo-400" />
                   <span>Session Code *</span>
                 </span>
-                <span className="text-[11px] font-mono text-indigo-400">e.g. ETH2026</span>
+                <span className="text-[11px] font-mono text-emerald-400">Must be live</span>
               </label>
 
               <div className="flex gap-2">
@@ -271,7 +279,7 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
                   maxLength={10}
                   value={quizCode}
                   onChange={(e) => setQuizCode(e.target.value.toUpperCase())}
-                  placeholder="ENTER SESSION CODE"
+                  placeholder="ENTER LIVE SESSION CODE"
                   className="flex-1 bg-slate-800/90 border border-slate-700 rounded-xl px-4 py-3 text-base text-white font-mono font-black tracking-widest uppercase placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition text-center"
                 />
 
@@ -297,9 +305,9 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
             <button
               type="submit"
               disabled={isLoading || !studentName.trim() || !quizCode.trim()}
-              className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-40 text-white font-bold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2 mt-2"
+              className="w-full py-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 disabled:opacity-40 text-white font-bold text-sm rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center justify-center gap-2 mt-2"
             >
-              <span>{isLoading ? 'Connecting to Session...' : 'Enter Session →'}</span>
+              <span>{isLoading ? 'Connecting to Test...' : 'Enter Live Test →'}</span>
             </button>
           </form>
 
