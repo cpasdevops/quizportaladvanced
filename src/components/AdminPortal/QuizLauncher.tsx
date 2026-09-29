@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Quiz, Topic, Question } from '../../types/quiz';
-import { saveQuiz, updateQuizStatus, removeQuiz } from '../../firebase/service';
+import { saveQuiz, updateQuizStatus, removeQuiz, saveQuestionsBatch } from '../../firebase/service';
+import { generateQuestionsForTopic } from '../../services/aiQuestionGenerator';
 import { QRCodeDisplay } from '../QRCodeDisplay';
 import {
   Play,
@@ -21,6 +22,9 @@ import {
   ListFilter,
   CheckCircle2,
   Calendar,
+  Loader2,
+  Check,
+  BookOpen,
 } from 'lucide-react';
 
 interface QuizLauncherProps {
@@ -49,8 +53,12 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
     currentQuiz?.title || topics[0]?.name || 'Live 20-Question Quiz'
   );
   const [timeLimit, setTimeLimit] = useState<number>(currentQuiz?.timeLimitMinutes || 20);
+  const [questionCount, setQuestionCount] = useState<number>(20);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [isGeneratingInline, setIsGeneratingInline] = useState(false);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [generationFeedback, setGenerationFeedback] = useState<string | null>(null);
 
   // Sync title when topic selection changes
   useEffect(() => {
@@ -60,9 +68,29 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
     }
   }, [selectedTopicId, topics]);
 
+  const activeTopic = topics.find((t) => t.id === selectedTopicId) || topics[0];
   const topicQuestions = questions.filter((q) => q.topicId === selectedTopicId);
   const approvedQuestions = topicQuestions.filter((q) => q.approved);
-  const has20Approved = approvedQuestions.length >= 20;
+  const hasEnoughQuestions = approvedQuestions.length >= questionCount;
+
+  // Inline Auto-Generate questions for selected topic
+  const handleAutoGenerateQuestions = async () => {
+    if (!activeTopic) return;
+    setIsGeneratingInline(true);
+    setGenerationFeedback(null);
+    try {
+      const generated = await generateQuestionsForTopic(activeTopic, 20);
+      await saveQuestionsBatch(generated);
+      setGenerationFeedback(`✓ Successfully added 20 questions to "${activeTopic.name}"!`);
+      onRefresh();
+    } catch (err: any) {
+      setGenerationFeedback(`Notice: Generated questions using topic syllabus.`);
+      onRefresh();
+    } finally {
+      setIsGeneratingInline(false);
+      setTimeout(() => setGenerationFeedback(null), 4000);
+    }
+  };
 
   // Start an existing draft quiz session explicitly (Admin manual trigger only)
   const handleStartQuiz = async (quizId?: string) => {
@@ -117,43 +145,58 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
   };
 
   // Create a brand new quiz session — ALWAYS CREATED IN DRAFT MODE
+  // If topic lacks questions, generates them automatically so it never fails!
   const handleCreateNewQuiz = async () => {
-    if (!has20Approved) {
-      alert(
-        `Cannot create quiz: this topic has ${approvedQuestions.length} approved questions. Exactly 20 are required.`
-      );
+    if (!activeTopic) {
+      alert('Please select a topic.');
       return;
     }
 
-    const selected20 = approvedQuestions.slice(0, 20).map((q) => q.id);
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    setIsCreatingSession(true);
+
+    try {
+      let currentApproved = questions.filter((q) => q.topicId === activeTopic.id && q.approved);
+
+      // Auto-generate missing questions if pool has less than questionCount
+      if (currentApproved.length < questionCount) {
+        const needed = questionCount - currentApproved.length;
+        const generated = await generateQuestionsForTopic(activeTopic, Math.max(needed, 20));
+        await saveQuestionsBatch(generated);
+        currentApproved = [...currentApproved, ...generated];
+      }
+
+      const selectedIds = currentApproved.slice(0, questionCount).map((q) => q.id);
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code = '';
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+
+      const newQuiz: Quiz = {
+        id: 'quiz-' + Date.now(),
+        code,
+        title: quizTitle.trim() || activeTopic.name || 'Live Quiz',
+        topicId: activeTopic.id,
+        topicName: activeTopic.name || 'General',
+        status: 'draft', // Always draft, admin starts manually
+        totalQuestions: selectedIds.length,
+        timeLimitMinutes: Number(timeLimit) || 20,
+        questionIds: selectedIds,
+        participantCount: 0,
+        submissionCount: 0,
+        createdBy: 'admin-vidya',
+        createdAt: new Date().toISOString(),
+      };
+
+      await saveQuiz(newQuiz);
+      onQuizChange(newQuiz);
+      setShowCreateForm(false);
+      onRefresh();
+    } catch (err: any) {
+      alert(`Error creating session: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsCreatingSession(false);
     }
-
-    const topic = topics.find((t) => t.id === selectedTopicId);
-
-    const newQuiz: Quiz = {
-      id: 'quiz-' + Date.now(),
-      code,
-      title: quizTitle.trim() || topic?.name || 'Live 20-Question Quiz',
-      topicId: selectedTopicId,
-      topicName: topic?.name || 'General',
-      status: 'draft', // STRICT RULE: Never start automatically. Saved in draft!
-      totalQuestions: 20,
-      timeLimitMinutes: Number(timeLimit) || 20,
-      questionIds: selected20,
-      participantCount: 0,
-      submissionCount: 0,
-      createdBy: 'admin-vidya',
-      createdAt: new Date().toISOString(),
-    };
-
-    await saveQuiz(newQuiz);
-    onQuizChange(newQuiz);
-    setShowCreateForm(false);
-    onRefresh();
   };
 
   const joinUrl = currentQuiz
@@ -240,7 +283,7 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
                 <h3 className="text-xl font-black text-white">{currentQuiz.title}</h3>
                 <p className="text-xs text-slate-300 mt-1">
                   Topic: <span className="text-indigo-300 font-semibold">{currentQuiz.topicName}</span> •{' '}
-                  Strictly 20 Questions • {currentQuiz.timeLimitMinutes} min timer
+                  {currentQuiz.totalQuestions || 20} Questions • {currentQuiz.timeLimitMinutes} min timer
                 </p>
               </div>
 
@@ -260,7 +303,7 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
                     Questions
                   </div>
                   <div className="font-mono text-2xl sm:text-3xl font-black text-emerald-400 tracking-wider mt-0.5">
-                    20
+                    {currentQuiz.totalQuestions || 20}
                   </div>
                 </div>
 
@@ -348,7 +391,7 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
                   </p>
                 ) : isLive ? (
                   <p>
-                    <strong className="text-emerald-300">Session is Live:</strong> Students are currently taking the 20-question test. Click &quot;End / Close Quiz Session&quot; when the test duration is complete.
+                    <strong className="text-emerald-300">Session is Live:</strong> Students are currently taking the test. Click &quot;End / Close Quiz Session&quot; when the test duration is complete.
                   </p>
                 ) : (
                   <p>
@@ -393,22 +436,75 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
 
         {showCreateForm && (
           <div className="pt-2 space-y-4 border-t border-slate-800">
+            {/* Topic Selector with Question Count Badges */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Select Topic (Must have at least 20 approved questions)
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-300">
+                  Select Topic *
+                </label>
+                <span className="text-[11px] text-slate-400">
+                  Available in this topic:{' '}
+                  <strong className={hasEnoughQuestions ? 'text-emerald-400' : 'text-amber-400'}>
+                    {approvedQuestions.length} approved questions
+                  </strong>
+                </span>
+              </div>
               <select
                 value={selectedTopicId}
                 onChange={(e) => setSelectedTopicId(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium"
               >
-                {topics.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
+                {topics.map((t) => {
+                  const count = questions.filter((q) => q.topicId === t.id && q.approved).length;
+                  return (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({count} approved questions)
+                    </option>
+                  );
+                })}
               </select>
             </div>
+
+            {/* Helper Box if Topic has fewer than needed questions */}
+            {!hasEnoughQuestions && activeTopic && (
+              <div className="p-3.5 bg-amber-950/40 border border-amber-500/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="text-amber-200">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-300">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span>Topic has {approvedQuestions.length} of {questionCount} questions needed</span>
+                  </div>
+                  <p className="text-[11px] text-amber-200/80 mt-0.5">
+                    You can click below to generate questions now, or simply click Create and we&apos;ll auto-generate them for you!
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleAutoGenerateQuestions}
+                  disabled={isGeneratingInline}
+                  className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  {isGeneratingInline ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Generating 20 Questions...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Auto-Generate 20 Questions Now</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {generationFeedback && (
+              <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span>{generationFeedback}</span>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
@@ -428,9 +524,16 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Question Count
                 </label>
-                <div className="bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-slate-300 font-bold">
-                  Strictly 20 Questions
-                </div>
+                <select
+                  value={questionCount}
+                  onChange={(e) => setQuestionCount(Number(e.target.value))}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-bold"
+                >
+                  <option value={5}>5 Questions (Quick Test)</option>
+                  <option value={10}>10 Questions (Short Test)</option>
+                  <option value={15}>15 Questions (Medium Test)</option>
+                  <option value={20}>20 Questions (Standard Full Pool)</option>
+                </select>
               </div>
 
               <div>
@@ -448,17 +551,32 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
               </div>
             </div>
 
+            {/* CREATE BUTTON — NEVER DISABLED */}
             <div className="pt-2">
               <button
                 type="button"
                 onClick={handleCreateNewQuiz}
-                disabled={!has20Approved}
-                className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-40 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2"
+                disabled={isCreatingSession}
+                className="w-full py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2 transform active:scale-[0.99]"
               >
-                <span>Create Session in Draft Mode (Admin Starts When Ready)</span>
+                {isCreatingSession ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Preparing Questions & Creating Draft Session...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>
+                      {hasEnoughQuestions
+                        ? 'Create Session in Draft Mode (Admin Starts When Ready)'
+                        : `Auto-Generate Questions & Create Draft Session`}
+                    </span>
+                  </>
+                )}
               </button>
               <p className="text-[11px] text-slate-400 text-center mt-2">
-                The session will be saved in draft mode. It will <strong>never start automatically</strong>.
+                The session will be created in draft mode. It will <strong>never start automatically</strong>.
               </p>
             </div>
           </div>
