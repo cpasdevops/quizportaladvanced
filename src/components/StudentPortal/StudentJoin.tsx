@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { fetchQuizByCode } from '../../firebase/service';
+import { fetchQuizByCode, fetchQuizzes } from '../../firebase/service';
 import { Quiz } from '../../types/quiz';
 import { QRScannerModal } from '../QRScannerModal';
 import {
@@ -14,6 +14,10 @@ import {
   CheckCircle2,
   Clock,
   BookOpen,
+  Radio,
+  Flame,
+  KeyRound,
+  ExternalLink,
 } from 'lucide-react';
 
 interface StudentJoinProps {
@@ -32,29 +36,44 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [availableQuizzes, setAvailableQuizzes] = useState<Quiz[]>([]);
 
-  // Check URL params for auto-filled code (e.g. scanned from another camera)
+  // Check URL params for auto-filled code (e.g. scanned from QR link)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const codeParam = params.get('code');
     if (codeParam) {
       setQuizCode(codeParam.toUpperCase());
     }
+
+    loadAvailableQuizzes();
+    const interval = setInterval(loadAvailableQuizzes, 3000);
+    return () => clearInterval(interval);
   }, []);
 
-  const handleJoin = async (e?: React.FormEvent) => {
+  const loadAvailableQuizzes = async () => {
+    try {
+      const list = await fetchQuizzes();
+      // Filter out cancelled quizzes
+      setAvailableQuizzes(list.filter((q) => q.status !== 'cancelled'));
+    } catch {
+      // Non-fatal
+    }
+  };
+
+  const handleJoin = async (overrideCode?: string, e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
 
     const nameToUse = studentName.trim();
-    const codeToUse = quizCode.trim().toUpperCase();
+    const codeToUse = (overrideCode || quizCode).trim().toUpperCase();
 
     if (!nameToUse) {
       setError('Please enter your full name to join the quiz.');
       return;
     }
     if (!codeToUse) {
-      setError('Please enter the 6-character Quiz Code or scan the QR Code.');
+      setError('Please enter the session code or scan the QR code.');
       return;
     }
 
@@ -75,12 +94,6 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
         return;
       }
 
-      if (quiz.status === 'draft') {
-        setError('This quiz is still in draft state. The host has not started it yet.');
-        setIsLoading(false);
-        return;
-      }
-
       // Save student identity in Auth context
       await loginAsStudent(nameToUse, studentEmail);
 
@@ -94,54 +107,126 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
 
   const handleScanSuccess = (scannedCode: string) => {
     setIsScannerOpen(false);
-    setQuizCode(scannedCode.toUpperCase());
-    // Auto submit if name is already provided
+    const upper = scannedCode.toUpperCase();
+    setQuizCode(upper);
     if (studentName.trim()) {
-      setTimeout(() => {
-        handleJoin();
-      }, 100);
+      handleJoin(upper);
+    }
+  };
+
+  const quickJoin = (code: string) => {
+    setQuizCode(code);
+    if (studentName.trim()) {
+      handleJoin(code);
     }
   };
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-8">
+    <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+      {/* Active & Scheduled Sessions Banner */}
+      {availableQuizzes.length > 0 && (
+        <div className="bg-slate-900/90 border border-indigo-500/40 rounded-3xl p-6 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div className="flex items-center gap-2">
+              <Radio className="w-5 h-5 text-indigo-400 animate-pulse" />
+              <h2 className="text-base font-bold text-white">Live & Scheduled Quiz Sessions</h2>
+            </div>
+            <span className="text-[10px] text-slate-400 font-mono">
+              Auto-updating
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {availableQuizzes.map((q) => {
+              const isLive = q.status === 'active';
+              const isDraft = q.status === 'draft';
+              const isDone = q.status === 'completed';
+
+              return (
+                <div
+                  key={q.id}
+                  className={`p-4 rounded-2xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                    isLive
+                      ? 'bg-indigo-950/40 border-indigo-500/60 shadow-lg shadow-indigo-900/20'
+                      : 'bg-slate-800/50 border-slate-700/60'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                          isLive
+                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 animate-pulse'
+                            : isDraft
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                            : 'bg-slate-700 text-slate-400 border-slate-600'
+                        }`}
+                      >
+                        {isLive ? '● Live Now' : isDraft ? '⏳ Waiting for Admin to Start' : 'Completed'}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        Topic: <span className="text-slate-300 font-semibold">{q.topicName}</span>
+                      </span>
+                    </div>
+
+                    <h3 className="font-extrabold text-white text-base leading-snug">
+                      {q.title}
+                    </h3>
+                  </div>
+
+                  {/* Code Badge and Join Button */}
+                  <div className="flex items-center gap-2 sm:self-center shrink-0">
+                    <div className="bg-slate-900/90 border border-slate-700/80 px-3 py-1.5 rounded-xl text-center">
+                      <div className="text-[9px] uppercase font-bold text-slate-400">Code</div>
+                      <div className="font-mono text-base font-black text-indigo-300 tracking-wider">
+                        {q.code}
+                      </div>
+                    </div>
+
+                    {!isDone && (
+                      <button
+                        type="button"
+                        onClick={() => quickJoin(q.code)}
+                        className={`px-3.5 py-2 text-xs font-bold rounded-xl shadow transition flex items-center gap-1.5 ${
+                          isLive
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30'
+                        }`}
+                      >
+                        <span>{isLive ? 'Join Test' : 'Join Lobby'}</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Main Join Form */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl">
-        {/* Glow ambient background */}
+        {/* Ambient glow */}
         <div className="absolute top-0 right-0 -mr-20 -mt-20 w-60 h-60 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-60 h-60 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative">
           {/* Header */}
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center mx-auto mb-4 shadow-xl shadow-indigo-500/25">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center mx-auto mb-3 shadow-xl shadow-indigo-500/25">
               <GraduationCap className="w-8 h-8 text-white" />
             </div>
             <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              Join Live Quiz
+              Student Quiz Portal
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-sm mx-auto">
-              Scan the host&apos;s QR code or enter your 6-character session code to receive your randomized 20 questions.
+              Scan the projected QR Code with your camera or enter the Session Code below.
             </p>
           </div>
 
-          {/* Quick Demo Fill Button */}
-          <div className="flex justify-center mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                setStudentName('Alex Morgan');
-                setStudentEmail('alex.m@university.edu');
-                setQuizCode('ETH2026');
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold rounded-full border border-slate-700 transition"
-            >
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              <span>Fill Demo Details (Code: ETH2026)</span>
-            </button>
-          </div>
-
           {/* Join Form */}
-          <form onSubmit={handleJoin} className="space-y-4">
+          <form onSubmit={(e) => handleJoin(undefined, e)} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5 flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-indigo-400" />
@@ -152,7 +237,7 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
                 required
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
-                placeholder="e.g. Maya Chen"
+                placeholder="e.g. Alex Morgan"
                 className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
               />
             </div>
@@ -165,7 +250,7 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
                 type="email"
                 value={studentEmail}
                 onChange={(e) => setStudentEmail(e.target.value)}
-                placeholder="e.g. maya@student.edu"
+                placeholder="e.g. alex@student.edu"
                 className="w-full bg-slate-800/90 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
               />
             </div>
@@ -176,27 +261,27 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
                   <Hash className="w-3.5 h-3.5 text-indigo-400" />
                   <span>Session Code *</span>
                 </span>
-                <span className="text-[11px] font-normal text-indigo-400">Ask host or teacher</span>
+                <span className="text-[11px] font-mono text-indigo-400">e.g. ETH2026</span>
               </label>
 
               <div className="flex gap-2">
                 <input
                   type="text"
                   required
-                  maxLength={8}
+                  maxLength={10}
                   value={quizCode}
                   onChange={(e) => setQuizCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. ETH2026"
-                  className="flex-1 bg-slate-800/90 border border-slate-700 rounded-xl px-4 py-3 text-base text-white font-mono font-bold tracking-widest uppercase placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition text-center"
+                  placeholder="ENTER SESSION CODE"
+                  className="flex-1 bg-slate-800/90 border border-slate-700 rounded-xl px-4 py-3 text-base text-white font-mono font-black tracking-widest uppercase placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition text-center"
                 />
 
                 <button
                   type="button"
                   onClick={() => setIsScannerOpen(true)}
-                  className="flex items-center gap-1.5 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition"
-                  title="Open Camera QR Scanner"
+                  className="flex items-center gap-2 px-4 py-3 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 hover:text-white text-xs font-bold rounded-xl border border-indigo-500/40 transition shrink-0"
+                  title="Open Camera to scan QR Code"
                 >
-                  <QrCode className="w-4 h-4 text-indigo-400" />
+                  <QrCode className="w-5 h-5 text-indigo-400" />
                   <span className="hidden sm:inline">Scan QR</span>
                 </button>
               </div>
@@ -214,8 +299,7 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
               disabled={isLoading || !studentName.trim() || !quizCode.trim()}
               className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-40 text-white font-bold text-sm rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2 mt-2"
             >
-              <span>{isLoading ? 'Verifying Session...' : 'Enter Quiz Lobby'}</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>{isLoading ? 'Connecting to Session...' : 'Enter Session →'}</span>
             </button>
           </form>
 

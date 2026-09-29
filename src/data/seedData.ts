@@ -330,7 +330,7 @@ export const SEED_QUIZ: Quiz = {
   title: 'Ethical Issues & Storytelling with Data in Generative AI',
   topicId: SEED_TOPIC_ID,
   topicName: SEED_TOPIC.name,
-  status: 'active',
+  status: 'draft',
   totalQuestions: 20,
   timeLimitMinutes: 15,
   questionIds: SEED_QUESTIONS.map(q => q.id),
@@ -338,5 +338,4 @@ export const SEED_QUIZ: Quiz = {
   submissionCount: 0,
   createdBy: 'admin-vidya',
   createdAt: '2026-09-28T08:25:00.000Z',
-  startedAt: '2026-09-28T08:30:00.000Z'
 };

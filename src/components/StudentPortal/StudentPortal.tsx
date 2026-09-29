@@ -3,6 +3,7 @@ import { Quiz, QuizResult, Question } from '../../types/quiz';
 import { fetchQuestions } from '../../firebase/service';
 import { useAuth } from '../../context/AuthContext';
 import { StudentJoin } from './StudentJoin';
+import { WaitingLobby } from './WaitingLobby';
 import { QuizInstructions } from './QuizInstructions';
 import { QuizPlayer } from './QuizPlayer';
 import { QuizResultView } from './QuizResultView';
@@ -10,7 +11,7 @@ import { StudentHistory } from './StudentHistory';
 
 export const StudentPortal: React.FC = () => {
   const { user } = useAuth();
-  const [viewState, setViewState] = useState<'join' | 'instructions' | 'playing' | 'result' | 'history'>('join');
+  const [viewState, setViewState] = useState<'join' | 'waiting' | 'instructions' | 'playing' | 'result' | 'history'>('join');
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
   const [candidateName, setCandidateName] = useState(user?.displayName || '');
   const [candidateEmail, setCandidateEmail] = useState(user?.email || '');
@@ -30,6 +31,17 @@ export const StudentPortal: React.FC = () => {
     setActiveQuiz(quiz);
     setCandidateName(name);
     setCandidateEmail(email || '');
+
+    // If admin hasn't started the quiz yet, place student in the Waiting Lobby!
+    if (quiz.status === 'draft') {
+      setViewState('waiting');
+    } else {
+      setViewState('instructions');
+    }
+  };
+
+  const handleQuizActivatedByAdmin = (activatedQuiz: Quiz) => {
+    setActiveQuiz(activatedQuiz);
     setViewState('instructions');
   };
 
@@ -53,6 +65,15 @@ export const StudentPortal: React.FC = () => {
         <StudentJoin
           onJoinSuccess={handleJoinSuccess}
           onGoToHistory={() => setViewState('history')}
+        />
+      )}
+
+      {viewState === 'waiting' && activeQuiz && (
+        <WaitingLobby
+          quiz={activeQuiz}
+          studentName={candidateName}
+          onQuizActivated={handleQuizActivatedByAdmin}
+          onLeave={() => setViewState('join')}
         />
       )}
 
