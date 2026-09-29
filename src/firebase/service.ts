@@ -233,18 +233,30 @@ export async function removeQuestion(questionId: string): Promise<void> {
 
 // ================= QUIZZES =================
 export async function fetchQuizzes(): Promise<Quiz[]> {
+  const localList = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
   try {
     const snap = await getDocs(collection(db, 'quizzes'));
     if (!snap.empty) {
-      const list: Quiz[] = [];
-      snap.forEach(d => list.push(d.data() as Quiz));
-      setLocal(LS_QUIZZES_KEY, list);
-      return list;
+      const remoteList: Quiz[] = [];
+      snap.forEach(d => remoteList.push(d.data() as Quiz));
+
+      const mergedMap = new Map<string, Quiz>();
+      // 1. Put local quizzes first
+      for (const q of localList) {
+        mergedMap.set(q.id, q);
+      }
+      // 2. Merge remote quizzes
+      for (const r of remoteList) {
+        mergedMap.set(r.id, { ...mergedMap.get(r.id), ...r });
+      }
+      const merged = Array.from(mergedMap.values());
+      setLocal(LS_QUIZZES_KEY, merged);
+      return merged;
     }
   } catch (err) {
     console.info('Using local quizzes cache:', err);
   }
-  return getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
+  return localList;
 }
 
 export async function fetchQuizByCode(code: string): Promise<Quiz | null> {
@@ -274,6 +286,12 @@ export async function saveQuiz(quiz: Quiz): Promise<void> {
   } catch (err) {
     console.warn('Firestore quiz save error:', err);
   }
+}
+
+export async function removeQuiz(quizId: string): Promise<void> {
+  const all = getLocal<Quiz[]>(LS_QUIZZES_KEY, []);
+  setLocal(LS_QUIZZES_KEY, all.filter(q => q.id !== quizId));
+  deleteDoc(doc(db, 'quizzes', quizId)).catch(() => {});
 }
 
 export async function updateQuizStatus(quizId: string, status: QuizStatus): Promise<void> {
@@ -374,7 +392,15 @@ export async function fetchResults(quizId?: string, studentId?: string): Promise
     if (snap && !snap.empty) {
       const list: QuizResult[] = [];
       snap.forEach(d => list.push(d.data() as QuizResult));
-      return list;
+      const local = getLocal<QuizResult[]>(LS_RESULTS_KEY, []);
+      const map = new Map<string, QuizResult>();
+      for (const item of local) map.set(item.id, item);
+      for (const item of list) map.set(item.id, item);
+      const merged = Array.from(map.values());
+      setLocal(LS_RESULTS_KEY, merged);
+      if (quizId) return merged.filter(r => r.quizId === quizId);
+      if (studentId) return merged.filter(r => r.studentId === studentId);
+      return merged;
     }
   } catch (err) {
     console.info('Using local results cache:', err);

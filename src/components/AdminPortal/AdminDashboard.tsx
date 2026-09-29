@@ -273,10 +273,12 @@ export const AdminDashboard: React.FC = () => {
       {activeTab === 'launcher' && (
         <QuizLauncher
           currentQuiz={activeQuiz}
+          quizzes={quizzes}
           topics={topics}
           questions={questions}
           onQuizChange={(q) => setActiveQuiz(q)}
           onRefresh={loadAllData}
+          onGoToHistory={() => setActiveTab('history')}
         />
       )}
 
