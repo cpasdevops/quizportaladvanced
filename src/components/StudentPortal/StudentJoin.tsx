@@ -49,15 +49,17 @@ export const StudentJoin: React.FC<StudentJoinProps> = ({
     loadLiveQuizzes();
     const interval = setInterval(loadLiveQuizzes, 2000);
 
-    // Instant local status update sync
+    // Instant local status update sync (same-window + cross-tab)
     const handleStatusChange = () => {
       loadLiveQuizzes();
     };
     window.addEventListener('quiz-status-changed', handleStatusChange);
+    window.addEventListener('storage', handleStatusChange);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('quiz-status-changed', handleStatusChange);
+      window.removeEventListener('storage', handleStatusChange);
     };
   }, []);
 

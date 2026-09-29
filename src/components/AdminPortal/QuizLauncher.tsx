@@ -92,12 +92,17 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
     }
   };
 
-  // Start an existing draft quiz session explicitly (Admin manual trigger only)
-  const handleStartQuiz = async (quizId?: string) => {
+  // Start an existing draft quiz session explicitly (Instant 0ms UI response)
+  const handleStartQuiz = (quizId?: string) => {
     const targetId = quizId || currentQuiz?.id;
     if (!targetId) return;
 
-    await updateQuizStatus(targetId, 'active');
+    // 1. Optimistic instant UI update
+    if (currentQuiz && currentQuiz.id === targetId) {
+      onQuizChange({ ...currentQuiz, status: 'active', startedAt: new Date().toISOString() });
+    }
+    // 2. Non-blocking update
+    updateQuizStatus(targetId, 'active');
     window.dispatchEvent(
       new CustomEvent('quiz-status-changed', {
         detail: { quizId: targetId, status: 'active' },
@@ -106,12 +111,17 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
     onRefresh();
   };
 
-  // Pause / Set back to draft
-  const handlePauseToDraft = async (quizId?: string) => {
+  // Pause / Set back to draft (Instant 0ms UI response)
+  const handlePauseToDraft = (quizId?: string) => {
     const targetId = quizId || currentQuiz?.id;
     if (!targetId) return;
 
-    await updateQuizStatus(targetId, 'draft');
+    // 1. Optimistic instant UI update
+    if (currentQuiz && currentQuiz.id === targetId) {
+      onQuizChange({ ...currentQuiz, status: 'draft' });
+    }
+    // 2. Non-blocking update
+    updateQuizStatus(targetId, 'draft');
     window.dispatchEvent(
       new CustomEvent('quiz-status-changed', {
         detail: { quizId: targetId, status: 'draft' },
@@ -120,20 +130,23 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
     onRefresh();
   };
 
-  // End or close an active quiz
-  const handleEndQuiz = async (quizId?: string) => {
+  // End or close an active quiz (Instant 0ms response)
+  const handleEndQuiz = (quizId?: string) => {
     const targetId = quizId || currentQuiz?.id;
     if (!targetId) return;
 
-    if (confirm('End and close this quiz session? Students will no longer be able to start new attempts, and submissions will be saved to history.')) {
-      await updateQuizStatus(targetId, 'completed');
-      window.dispatchEvent(
-        new CustomEvent('quiz-status-changed', {
-          detail: { quizId: targetId, status: 'completed' },
-        })
-      );
-      onRefresh();
+    // 1. Optimistic instant UI update
+    if (currentQuiz && currentQuiz.id === targetId) {
+      onQuizChange({ ...currentQuiz, status: 'completed', endedAt: new Date().toISOString() });
     }
+    // 2. Non-blocking update
+    updateQuizStatus(targetId, 'completed');
+    window.dispatchEvent(
+      new CustomEvent('quiz-status-changed', {
+        detail: { quizId: targetId, status: 'completed' },
+      })
+    );
+    onRefresh();
   };
 
   // Delete a quiz session

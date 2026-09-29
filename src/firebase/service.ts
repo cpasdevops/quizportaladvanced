@@ -231,36 +231,40 @@ export async function removeQuestion(questionId: string): Promise<void> {
   deleteDoc(doc(db, 'questions', questionId)).catch(() => {});
 }
 
+// Broadcast key for instant cross-tab sync
+export const LS_QUIZ_STATUS_BROADCAST = 'qp_broadcast_status_v1';
+
 // ================= QUIZZES =================
 export async function fetchQuizzes(): Promise<Quiz[]> {
   const localList = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
-  try {
-    const snap = await getDocs(collection(db, 'quizzes'));
-    if (!snap.empty) {
-      const remoteList: Quiz[] = [];
-      snap.forEach(d => remoteList.push(d.data() as Quiz));
+  // Non-blocking background sync with Firestore
+  getDocs(collection(db, 'quizzes'))
+    .then(snap => {
+      if (!snap.empty) {
+        const remoteList: Quiz[] = [];
+        snap.forEach(d => remoteList.push(d.data() as Quiz));
 
-      const mergedMap = new Map<string, Quiz>();
-      // 1. Put local quizzes first
-      for (const q of localList) {
-        mergedMap.set(q.id, q);
+        const mergedMap = new Map<string, Quiz>();
+        for (const q of getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ])) {
+          mergedMap.set(q.id, q);
+        }
+        for (const r of remoteList) {
+          mergedMap.set(r.id, { ...mergedMap.get(r.id), ...r });
+        }
+        setLocal(LS_QUIZZES_KEY, Array.from(mergedMap.values()));
       }
-      // 2. Merge remote quizzes
-      for (const r of remoteList) {
-        mergedMap.set(r.id, { ...mergedMap.get(r.id), ...r });
-      }
-      const merged = Array.from(mergedMap.values());
-      setLocal(LS_QUIZZES_KEY, merged);
-      return merged;
-    }
-  } catch (err) {
-    console.info('Using local quizzes cache:', err);
-  }
+    })
+    .catch(() => {});
+
   return localList;
 }
 
 export async function fetchQuizByCode(code: string): Promise<Quiz | null> {
   const upper = code.trim().toUpperCase();
+  const all = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
+  const foundLocal = all.find(q => q.code.toUpperCase() === upper);
+  if (foundLocal) return foundLocal;
+
   try {
     const qCol = collection(db, 'quizzes');
     const snap = await getDocs(query(qCol, where('code', '==', upper)));
@@ -268,10 +272,9 @@ export async function fetchQuizByCode(code: string): Promise<Quiz | null> {
       return snap.docs[0].data() as Quiz;
     }
   } catch (err) {
-    console.info('Quiz lookup via Firestore failed, checking local:', err);
+    console.info('Quiz lookup via Firestore failed:', err);
   }
-  const all = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
-  return all.find(q => q.code.toUpperCase() === upper) || null;
+  return null;
 }
 
 export async function saveQuiz(quiz: Quiz): Promise<void> {
@@ -282,10 +285,13 @@ export async function saveQuiz(quiz: Quiz): Promise<void> {
   setLocal(LS_QUIZZES_KEY, all);
 
   try {
-    await setDoc(doc(db, 'quizzes', quiz.id), quiz);
-  } catch (err) {
+    localStorage.setItem(LS_QUIZ_STATUS_BROADCAST, JSON.stringify({ quizId: quiz.id, status: quiz.status, t: Date.now() }));
+  } catch {}
+
+  // Background non-blocking sync
+  setDoc(doc(db, 'quizzes', quiz.id), quiz).catch(err => {
     console.warn('Firestore quiz save error:', err);
-  }
+  });
 }
 
 export async function removeQuiz(quizId: string): Promise<void> {
@@ -304,14 +310,18 @@ export async function updateQuizStatus(quizId: string, status: QuizStatus): Prom
     setLocal(LS_QUIZZES_KEY, all);
   }
 
+  // Cross-tab instant notification via localStorage event
   try {
-    const payload: Partial<Quiz> = { status };
-    if (status === 'active') payload.startedAt = new Date().toISOString();
-    if (status === 'completed' || status === 'cancelled') payload.endedAt = new Date().toISOString();
-    await updateDoc(doc(db, 'quizzes', quizId), payload);
-  } catch (err) {
+    localStorage.setItem(LS_QUIZ_STATUS_BROADCAST, JSON.stringify({ quizId, status, t: Date.now() }));
+  } catch {}
+
+  // Non-blocking Firestore update (does not stall UI!)
+  const payload: Partial<Quiz> = { status };
+  if (status === 'active') payload.startedAt = new Date().toISOString();
+  if (status === 'completed' || status === 'cancelled') payload.endedAt = new Date().toISOString();
+  updateDoc(doc(db, 'quizzes', quizId), payload).catch(err => {
     console.warn('Firestore quiz status update error:', err);
-  }
+  });
 }
 
 export function subscribeToQuiz(quizId: string, callback: (quiz: Quiz | null) => void): () => void {
@@ -382,33 +392,28 @@ export async function submitResult(result: QuizResult): Promise<void> {
 }
 
 export async function fetchResults(quizId?: string, studentId?: string): Promise<QuizResult[]> {
-  try {
-    const rCol = collection(db, 'results');
-    let snap;
-    if (quizId) snap = await getDocs(query(rCol, where('quizId', '==', quizId)));
-    else if (studentId) snap = await getDocs(query(rCol, where('studentId', '==', studentId)));
-    else snap = await getDocs(rCol);
+  const local = getLocal<QuizResult[]>(LS_RESULTS_KEY, []);
 
-    if (snap && !snap.empty) {
-      const list: QuizResult[] = [];
-      snap.forEach(d => list.push(d.data() as QuizResult));
-      const local = getLocal<QuizResult[]>(LS_RESULTS_KEY, []);
-      const map = new Map<string, QuizResult>();
-      for (const item of local) map.set(item.id, item);
-      for (const item of list) map.set(item.id, item);
-      const merged = Array.from(map.values());
-      setLocal(LS_RESULTS_KEY, merged);
-      if (quizId) return merged.filter(r => r.quizId === quizId);
-      if (studentId) return merged.filter(r => r.studentId === studentId);
-      return merged;
-    }
-  } catch (err) {
-    console.info('Using local results cache:', err);
-  }
-  const all = getLocal<QuizResult[]>(LS_RESULTS_KEY, []);
-  if (quizId) return all.filter(r => r.quizId === quizId);
-  if (studentId) return all.filter(r => r.studentId === studentId);
-  return all;
+  // Background non-blocking fetch from Firestore
+  const rCol = collection(db, 'results');
+  const qPromise = quizId ? getDocs(query(rCol, where('quizId', '==', quizId))) : (studentId ? getDocs(query(rCol, where('studentId', '==', studentId))) : getDocs(rCol));
+  qPromise
+    .then(snap => {
+      if (snap && !snap.empty) {
+        const list: QuizResult[] = [];
+        snap.forEach(d => list.push(d.data() as QuizResult));
+        const curLocal = getLocal<QuizResult[]>(LS_RESULTS_KEY, []);
+        const map = new Map<string, QuizResult>();
+        for (const item of curLocal) map.set(item.id, item);
+        for (const item of list) map.set(item.id, item);
+        setLocal(LS_RESULTS_KEY, Array.from(map.values()));
+      }
+    })
+    .catch(() => {});
+
+  if (quizId) return local.filter(r => r.quizId === quizId);
+  if (studentId) return local.filter(r => r.studentId === studentId);
+  return local;
 }
 
 export function subscribeToQuizResults(quizId: string, callback: (results: QuizResult[]) => void): () => void {
