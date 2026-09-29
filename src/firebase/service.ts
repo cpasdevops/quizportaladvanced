@@ -480,7 +480,7 @@ export async function submitResult(result: QuizResult): Promise<void> {
   all.unshift(result);
   setLocal(LS_RESULTS_KEY, all);
 
-  // Update quiz participant / submission count
+  // Update quiz participant / submission count locally
   const quizzes = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
   const quiz = quizzes.find(q => q.id === result.quizId);
   if (quiz) {
@@ -488,12 +488,21 @@ export async function submitResult(result: QuizResult): Promise<void> {
     setLocal(LS_QUIZZES_KEY, quizzes);
   }
 
+  // Non-blocking sanitized sync to Firestore
   try {
-    await setDoc(doc(db, 'results', result.id), result);
+    const cleanResult = sanitizeForFirestore({
+      ...result,
+      breakdown: (result.breakdown || []).map(b => sanitizeForFirestore({
+        ...b,
+        userSelectedOption: b.userSelectedOption !== undefined ? b.userSelectedOption : null,
+        explanation: b.explanation || 'No explanation provided.',
+      })),
+    });
+    setDoc(doc(db, 'results', result.id), cleanResult).catch(err => {
+      console.warn('Firestore result sync notice:', err);
+    });
     if (quiz) {
-      await updateDoc(doc(db, 'quizzes', quiz.id), {
-        submissionCount: quiz.submissionCount,
-      });
+      setDoc(doc(db, 'quizzes', quiz.id), { submissionCount: quiz.submissionCount }, { merge: true }).catch(() => {});
     }
   } catch (err) {
     console.warn('Firestore result submission error:', err);

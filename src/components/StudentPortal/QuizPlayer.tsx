@@ -174,75 +174,86 @@ export const QuizPlayer: React.FC<QuizPlayerProps> = ({
   };
 
   // Submit and Calculate Score
-  const handleSubmitFinal = async (isAuto = false) => {
+  const handleSubmitFinal = (isAuto = false) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
-    setShowSubmitModal(false);
 
-    const timeTaken = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
+    try {
+      const timeTaken = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
 
-    let correctCount = 0;
-    let incorrectCount = 0;
-    let unansweredCount = 0;
+      let correctCount = 0;
+      let incorrectCount = 0;
+      let unansweredCount = 0;
 
-    const breakdown: QuestionResultBreakdown[] = [];
+      const breakdown: QuestionResultBreakdown[] = [];
 
-    shuffledQuestions.forEach((q) => {
-      const permutedChosen = answers[q.id];
-      const permOrder = optionPermutations[q.id] || [0, 1, 2, 3];
+      shuffledQuestions.forEach((q) => {
+        const permutedChosen = answers[q.id];
+        const permOrder = optionPermutations[q.id] || [0, 1, 2, 3];
 
-      let originalChosen: number | null = null;
-      let isCorrect = false;
+        let originalChosen: number | null = null;
+        let isCorrect = false;
 
-      if (permutedChosen !== null && permutedChosen !== undefined) {
-        originalChosen = permOrder[permutedChosen];
-        if (originalChosen === q.correctOption) {
-          correctCount++;
-          isCorrect = true;
+        if (permutedChosen !== null && permutedChosen !== undefined) {
+          originalChosen = permOrder[permutedChosen];
+          if (originalChosen === q.correctOption) {
+            correctCount++;
+            isCorrect = true;
+          } else {
+            incorrectCount++;
+          }
         } else {
-          incorrectCount++;
+          unansweredCount++;
         }
-      } else {
-        unansweredCount++;
-      }
 
-      breakdown.push({
-        questionId: q.id,
-        questionText: q.questionText,
-        options: q.options,
-        userSelectedOption: originalChosen,
-        correctOption: q.correctOption,
-        isCorrect,
-        explanation: q.explanation,
+        breakdown.push({
+          questionId: q.id,
+          questionText: q.questionText || '',
+          options: q.options || [],
+          userSelectedOption: originalChosen,
+          correctOption: q.correctOption,
+          isCorrect,
+          explanation: q.explanation || 'No explanation provided.',
+        });
       });
-    });
 
-    const score = correctCount;
-    const percentage = Math.round((score / 20) * 100);
+      const totalQ = shuffledQuestions.length || 20;
+      const score = correctCount;
+      const percentage = Math.round((score / totalQ) * 100);
 
-    const finalResult: QuizResult = {
-      id: `res-${quiz.id}-${studentId}-${Date.now()}`,
-      quizId: quiz.id,
-      quizCode: quiz.code,
-      quizTitle: quiz.title,
-      topicName: quiz.topicName,
-      studentId,
-      studentName,
-      studentEmail: studentEmail || '',
-      score,
-      totalQuestions: 20,
-      percentage,
-      correctCount,
-      incorrectCount,
-      unansweredCount,
-      timeTakenSeconds: timeTaken,
-      breakdown,
-      submittedAt: new Date().toISOString(),
-    };
+      const finalResult: QuizResult = {
+        id: `res-${quiz.id}-${studentId}-${Date.now()}`,
+        quizId: quiz.id,
+        quizCode: quiz.code,
+        quizTitle: quiz.title,
+        topicName: quiz.topicName,
+        studentId,
+        studentName,
+        studentEmail: studentEmail || '',
+        score,
+        totalQuestions: totalQ,
+        percentage,
+        correctCount,
+        incorrectCount,
+        unansweredCount,
+        timeTakenSeconds: timeTaken,
+        breakdown,
+        submittedAt: new Date().toISOString(),
+      };
 
-    // Save to Firebase and update status
-    await submitResult(finalResult);
-    onQuizSubmitted(finalResult);
+      // 1. Instant local persistence and background cloud sync (non-blocking)
+      submitResult(finalResult).catch((err) => {
+        console.warn('Background submission sync notice:', err);
+      });
+
+      // 2. Hide modal and trigger immediate result view transition
+      setShowSubmitModal(false);
+      onQuizSubmitted(finalResult);
+    } catch (err) {
+      console.error('Submission calculation error:', err);
+      setIsSubmitting(false);
+      setShowSubmitModal(false);
+    }
   };
 
   if (shuffledQuestions.length === 0) {
