@@ -20,6 +20,15 @@ import {
   getDocFromServer,
 } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import {
+  getDatabase,
+  ref as rtdbRef,
+  set as rtdbSet,
+  get as rtdbGet,
+  update as rtdbUpdate,
+  remove as rtdbRemove,
+  onValue as rtdbOnValue,
+} from 'firebase/database';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Topic, Question, Quiz, QuizAttempt, QuizResult, QuizStatus } from '../types/quiz';
 import { SEED_TOPIC, SEED_QUESTIONS, SEED_QUIZ } from '../data/seedData';
@@ -54,6 +63,7 @@ export interface FirestoreErrorInfo {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const rtdb = getDatabase(app);
 export const storage = getStorage(app);
 
 // Connectivity check as instructed by firebase-integration skill
@@ -274,7 +284,21 @@ function mergeQuizzes(localList: Quiz[], remoteList: Quiz[]): Quiz[] {
 // ================= QUIZZES =================
 export async function fetchQuizzes(): Promise<Quiz[]> {
   const localList = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
-  // Non-blocking background sync with Firestore
+
+  // Non-blocking background sync with Realtime Database (ultra-fast cross-device sync)
+  try {
+    rtdbGet(rtdbRef(rtdb, 'quizzes')).then(snap => {
+      if (snap.exists()) {
+        const val = snap.val();
+        const remoteList: Quiz[] = Object.values(val);
+        const currentLocal = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
+        const merged = mergeQuizzes(currentLocal, remoteList);
+        setLocal(LS_QUIZZES_KEY, merged);
+      }
+    }).catch(() => {});
+  } catch {}
+
+  // Fallback sync with Firestore
   getDocs(collection(db, 'quizzes'))
     .then(snap => {
       if (!snap.empty) {
@@ -296,34 +320,50 @@ export async function fetchQuizByCode(code: string): Promise<Quiz | null> {
   const foundLocal = all.find(q => q.code && q.code.trim().toUpperCase() === upper);
   if (foundLocal) return foundLocal;
 
+  // 1. Direct Realtime Database lookup by code (instant cross-device, works on mobile & Vercel!)
   try {
-    const qCol = collection(db, 'quizzes');
-    // 1. Exact match query
-    const snap = await getDocs(query(qCol, where('code', '==', upper)));
-    if (!snap.empty) {
-      const q = snap.docs[0].data() as Quiz;
+    const codeSnap = await rtdbGet(rtdbRef(rtdb, `quiz_codes/${upper}`));
+    if (codeSnap.exists()) {
+      const q = codeSnap.val() as Quiz;
       const cur = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
-      cur.unshift(q);
+      if (!cur.some(item => item.id === q.id)) cur.unshift(q);
       setLocal(LS_QUIZZES_KEY, cur);
       return q;
     }
 
-    // 2. Fallback scan in case of casing / format mismatch
-    const allSnap = await getDocs(qCol);
-    if (!allSnap.empty) {
-      for (const d of allSnap.docs) {
-        const q = d.data() as Quiz;
+    // Scan all quizzes in RTDB
+    const allSnap = await rtdbGet(rtdbRef(rtdb, 'quizzes'));
+    if (allSnap.exists()) {
+      const val = allSnap.val();
+      for (const key of Object.keys(val)) {
+        const q = val[key] as Quiz;
         if (q.code && q.code.trim().toUpperCase() === upper) {
           const cur = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
-          cur.unshift(q);
+          if (!cur.some(item => item.id === q.id)) cur.unshift(q);
           setLocal(LS_QUIZZES_KEY, cur);
           return q;
         }
       }
     }
   } catch (err) {
+    console.info('RTDB lookup error:', err);
+  }
+
+  // 2. Secondary Firestore query
+  try {
+    const qCol = collection(db, 'quizzes');
+    const snap = await getDocs(query(qCol, where('code', '==', upper)));
+    if (!snap.empty) {
+      const q = snap.docs[0].data() as Quiz;
+      const cur = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
+      if (!cur.some(item => item.id === q.id)) cur.unshift(q);
+      setLocal(LS_QUIZZES_KEY, cur);
+      return q;
+    }
+  } catch (err) {
     console.info('Quiz lookup via Firestore failed:', err);
   }
+
   return null;
 }
 
@@ -339,8 +379,17 @@ export async function saveQuiz(quiz: Quiz): Promise<void> {
     window.dispatchEvent(new CustomEvent('quiz-status-changed', { detail: { quizId: quiz.id, status: quiz.status } }));
   } catch {}
 
-  // Non-blocking sync to Firestore with clean payload
-  const cleanData = sanitizeForFirestore(quiz);
+  const cleanData = JSON.parse(JSON.stringify(quiz));
+
+  // 1. Save to Realtime Database (confirmed working across mobile and all origins!)
+  try {
+    rtdbSet(rtdbRef(rtdb, `quizzes/${quiz.id}`), cleanData).catch(() => {});
+    if (quiz.code) {
+      rtdbSet(rtdbRef(rtdb, `quiz_codes/${quiz.code.toUpperCase()}`), cleanData).catch(() => {});
+    }
+  } catch {}
+
+  // 2. Non-blocking sync to Firestore with clean payload
   setDoc(doc(db, 'quizzes', quiz.id), cleanData, { merge: true }).catch(err => {
     console.warn('Firestore quiz save error:', err);
   });
@@ -348,7 +397,17 @@ export async function saveQuiz(quiz: Quiz): Promise<void> {
 
 export async function removeQuiz(quizId: string): Promise<void> {
   const all = getLocal<Quiz[]>(LS_QUIZZES_KEY, []);
+  const quiz = all.find(q => q.id === quizId);
   setLocal(LS_QUIZZES_KEY, all.filter(q => q.id !== quizId));
+
+  // Remove from RTDB
+  try {
+    rtdbRemove(rtdbRef(rtdb, `quizzes/${quizId}`)).catch(() => {});
+    if (quiz?.code) {
+      rtdbRemove(rtdbRef(rtdb, `quiz_codes/${quiz.code.toUpperCase()}`)).catch(() => {});
+    }
+  } catch {}
+
   deleteDoc(doc(db, 'quizzes', quizId)).catch(() => {});
   try {
     localStorage.setItem(LS_QUIZ_STATUS_BROADCAST, JSON.stringify({ quizId, deleted: true, t: Date.now() }));
@@ -372,19 +431,24 @@ export async function updateQuizStatus(quizId: string, status: QuizStatus): Prom
     window.dispatchEvent(new CustomEvent('quiz-status-changed', { detail: { quizId, status } }));
   } catch {}
 
-  // Sync full quiz to Firestore so all fields (code, title, questions) remain intact
+  const payload: any = { status };
+  if (status === 'active') payload.startedAt = new Date().toISOString();
+  if (status === 'completed' || status === 'cancelled') payload.endedAt = new Date().toISOString();
+
+  // 1. Update in Realtime Database (instant real-time push to mobile and all devices)
+  try {
+    rtdbUpdate(rtdbRef(rtdb, `quizzes/${quizId}`), payload).catch(() => {});
+    if (quiz && quiz.code) {
+      rtdbUpdate(rtdbRef(rtdb, `quiz_codes/${quiz.code.toUpperCase()}`), payload).catch(() => {});
+    }
+  } catch {}
+
+  // 2. Sync to Firestore
   if (quiz) {
-    const cleanData = sanitizeForFirestore(quiz);
-    setDoc(doc(db, 'quizzes', quizId), cleanData, { merge: true }).catch(err => {
-      console.warn('Firestore quiz status update error:', err);
-    });
+    const cleanData = JSON.parse(JSON.stringify(quiz));
+    setDoc(doc(db, 'quizzes', quizId), cleanData, { merge: true }).catch(() => {});
   } else {
-    const payload: Partial<Quiz> = { status };
-    if (status === 'active') payload.startedAt = new Date().toISOString();
-    if (status === 'completed' || status === 'cancelled') payload.endedAt = new Date().toISOString();
-    setDoc(doc(db, 'quizzes', quizId), payload, { merge: true }).catch(err => {
-      console.warn('Firestore quiz status update error:', err);
-    });
+    setDoc(doc(db, 'quizzes', quizId), payload, { merge: true }).catch(() => {});
   }
 }
 
@@ -396,7 +460,25 @@ export function subscribeToAllQuizzes(callback: (quizzes: Quiz[]) => void): () =
   const initial = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
   callback(initial);
 
-  // 2. Real-time Firestore listener
+  // 2. Realtime Database onValue listener (WebSockets connection across all devices!)
+  let unsubRTDB = () => {};
+  try {
+    const qRef = rtdbRef(rtdb, 'quizzes');
+    unsubRTDB = rtdbOnValue(qRef, snap => {
+      if (snap.exists()) {
+        const val = snap.val();
+        const remoteList: Quiz[] = Object.values(val);
+        const currentLocal = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
+        const merged = mergeQuizzes(currentLocal, remoteList);
+        setLocal(LS_QUIZZES_KEY, merged);
+        callback(merged);
+      }
+    }, err => {
+      console.info('RTDB onValue notice:', err);
+    });
+  } catch {}
+
+  // 3. Firestore listener fallback
   let unsubFirestore = () => {};
   try {
     unsubFirestore = onSnapshot(collection(db, 'quizzes'), snap => {
@@ -408,12 +490,10 @@ export function subscribeToAllQuizzes(callback: (quizzes: Quiz[]) => void): () =
         setLocal(LS_QUIZZES_KEY, merged);
         callback(merged);
       }
-    }, err => {
-      console.warn('Firestore quiz snapshot notice:', err);
-    });
+    }, () => {});
   } catch {}
 
-  // 3. Local events handler
+  // 4. Local events handler
   const handleLocalChange = () => {
     const updated = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
     callback(updated);
@@ -422,10 +502,11 @@ export function subscribeToAllQuizzes(callback: (quizzes: Quiz[]) => void): () =
   window.addEventListener('storage', handleLocalChange);
   window.addEventListener('quiz-status-changed', handleLocalChange);
 
-  // 4. Polling safeguard
+  // 5. Polling safeguard
   const timer = setInterval(handleLocalChange, 1000);
 
   return () => {
+    unsubRTDB();
     unsubFirestore();
     window.removeEventListener('storage', handleLocalChange);
     window.removeEventListener('quiz-status-changed', handleLocalChange);
@@ -458,14 +539,23 @@ export async function saveAttempt(attempt: QuizAttempt): Promise<void> {
   all[attempt.id] = attempt;
   setLocal(LS_ATTEMPTS_KEY, all);
 
+  const clean = JSON.parse(JSON.stringify(attempt));
   try {
-    await setDoc(doc(db, 'attempts', attempt.id), attempt);
+    rtdbSet(rtdbRef(rtdb, `attempts/${attempt.id}`), clean).catch(() => {});
+  } catch {}
+
+  try {
+    setDoc(doc(db, 'attempts', attempt.id), clean).catch(() => {});
   } catch (err) {
     // local save succeeded
   }
 }
 
 export async function fetchAttempt(attemptId: string): Promise<QuizAttempt | null> {
+  try {
+    const snap = await rtdbGet(rtdbRef(rtdb, `attempts/${attemptId}`));
+    if (snap.exists()) return snap.val() as QuizAttempt;
+  } catch {}
   try {
     const snap = await getDoc(doc(db, 'attempts', attemptId));
     if (snap.exists()) return snap.data() as QuizAttempt;
@@ -488,19 +578,22 @@ export async function submitResult(result: QuizResult): Promise<void> {
     setLocal(LS_QUIZZES_KEY, quizzes);
   }
 
-  // Non-blocking sanitized sync to Firestore
+  const cleanResult = JSON.parse(JSON.stringify(result));
+
+  // 1. Save to Realtime Database (confirmed working cross-device)
   try {
-    const cleanResult = sanitizeForFirestore({
-      ...result,
-      breakdown: (result.breakdown || []).map(b => sanitizeForFirestore({
-        ...b,
-        userSelectedOption: b.userSelectedOption !== undefined ? b.userSelectedOption : null,
-        explanation: b.explanation || 'No explanation provided.',
-      })),
-    });
-    setDoc(doc(db, 'results', result.id), cleanResult).catch(err => {
-      console.warn('Firestore result sync notice:', err);
-    });
+    rtdbSet(rtdbRef(rtdb, `results/${result.id}`), cleanResult).catch(() => {});
+    if (quiz) {
+      rtdbUpdate(rtdbRef(rtdb, `quizzes/${quiz.id}`), { submissionCount: quiz.submissionCount }).catch(() => {});
+      if (quiz.code) {
+        rtdbUpdate(rtdbRef(rtdb, `quiz_codes/${quiz.code.toUpperCase()}`), { submissionCount: quiz.submissionCount }).catch(() => {});
+      }
+    }
+  } catch {}
+
+  // 2. Non-blocking sanitized sync to Firestore
+  try {
+    setDoc(doc(db, 'results', result.id), cleanResult).catch(() => {});
     if (quiz) {
       setDoc(doc(db, 'quizzes', quiz.id), { submissionCount: quiz.submissionCount }, { merge: true }).catch(() => {});
     }
@@ -512,22 +605,20 @@ export async function submitResult(result: QuizResult): Promise<void> {
 export async function fetchResults(quizId?: string, studentId?: string): Promise<QuizResult[]> {
   const local = getLocal<QuizResult[]>(LS_RESULTS_KEY, []);
 
-  // Background non-blocking fetch from Firestore
-  const rCol = collection(db, 'results');
-  const qPromise = quizId ? getDocs(query(rCol, where('quizId', '==', quizId))) : (studentId ? getDocs(query(rCol, where('studentId', '==', studentId))) : getDocs(rCol));
-  qPromise
-    .then(snap => {
-      if (snap && !snap.empty) {
-        const list: QuizResult[] = [];
-        snap.forEach(d => list.push(d.data() as QuizResult));
+  // Background non-blocking fetch from Realtime Database
+  try {
+    rtdbGet(rtdbRef(rtdb, 'results')).then(snap => {
+      if (snap.exists()) {
+        const val = snap.val();
+        const list: QuizResult[] = Object.values(val);
         const curLocal = getLocal<QuizResult[]>(LS_RESULTS_KEY, []);
         const map = new Map<string, QuizResult>();
         for (const item of curLocal) map.set(item.id, item);
         for (const item of list) map.set(item.id, item);
         setLocal(LS_RESULTS_KEY, Array.from(map.values()));
       }
-    })
-    .catch(() => {});
+    }).catch(() => {});
+  } catch {}
 
   if (quizId) return local.filter(r => r.quizId === quizId);
   if (studentId) return local.filter(r => r.studentId === studentId);
@@ -535,21 +626,21 @@ export async function fetchResults(quizId?: string, studentId?: string): Promise
 }
 
 export function subscribeToQuizResults(quizId: string, callback: (results: QuizResult[]) => void): () => void {
+  // Listen via RTDB
+  let unsubRTDB = () => {};
   try {
-    const q = query(collection(db, 'results'), where('quizId', '==', quizId));
-    const unsub = onSnapshot(q, snap => {
-      const list: QuizResult[] = [];
-      snap.forEach(d => list.push(d.data() as QuizResult));
-      callback(list);
+    unsubRTDB = rtdbOnValue(rtdbRef(rtdb, 'results'), snap => {
+      if (snap.exists()) {
+        const val = snap.val();
+        const list: QuizResult[] = Object.values(val);
+        callback(list.filter(r => r.quizId === quizId));
+      }
     });
-    return unsub;
-  } catch {
-    const timer = setInterval(() => {
-      const all = getLocal<QuizResult[]>(LS_RESULTS_KEY, []);
-      callback(all.filter(r => r.quizId === quizId));
-    }, 2000);
-    return () => clearInterval(timer);
-  }
+  } catch {}
+
+  return () => {
+    unsubRTDB();
+  };
 }
 
 import { uploadMaterialFile } from '../utils/fileStore';
