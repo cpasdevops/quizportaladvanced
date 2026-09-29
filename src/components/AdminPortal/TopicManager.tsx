@@ -278,24 +278,38 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
               <div className="pt-3 border-t border-slate-700/50 space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   {t.studyMaterialName ? (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPreviewMaterial({
-                          id: t.id,
-                          name: t.studyMaterialName!,
-                          text: t.studyMaterialText,
-                          url: t.studyMaterialUrl,
-                          size: t.studyMaterialSize,
-                        });
-                      }}
-                      className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 font-medium truncate max-w-[170px]"
-                      title="View Attached Study Material"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                      <span className="truncate">{t.studyMaterialName}</span>
-                      <Eye className="w-3 h-3 text-slate-400 shrink-0" />
-                    </button>
+                    <div className="flex items-center gap-1.5 truncate max-w-[190px]">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreviewMaterial({
+                            id: t.id,
+                            name: t.studyMaterialName!,
+                            text: t.studyMaterialText,
+                            url: t.studyMaterialUrl,
+                            size: t.studyMaterialSize,
+                          });
+                        }}
+                        className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 font-medium truncate"
+                        title="View Attached Study Material"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                        <span className="truncate max-w-[120px]">{t.studyMaterialName}</span>
+                        <Eye className="w-3 h-3 text-slate-400 shrink-0" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadMaterial(t.studyMaterialUrl || '', t.studyMaterialName!, t.id);
+                        }}
+                        className="p-1 text-slate-400 hover:text-emerald-400 hover:bg-slate-700/60 rounded transition"
+                        title="Direct Download / Open PDF"
+                      >
+                        <Download className="w-3 h-3" />
+                      </button>
+                    </div>
                   ) : (
                     <span className="text-slate-500 text-[11px]">No PDF attached yet</span>
                   )}

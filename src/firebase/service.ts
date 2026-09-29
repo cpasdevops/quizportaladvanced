@@ -128,16 +128,39 @@ if (!localStorage.getItem(LS_RESULTS_KEY)) {
 
 // ================= TOPICS =================
 export async function fetchTopics(): Promise<Topic[]> {
-  const cached = getLocal<Topic[]>(LS_TOPICS_KEY, [SEED_TOPIC]);
-  // Fast background check if online
+  const localList = getLocal<Topic[]>(LS_TOPICS_KEY, [SEED_TOPIC]);
+
+  // Non-blocking background sync with Firestore that MERGES rather than overwriting
   getDocs(collection(db, 'topics')).then(snap => {
     if (!snap.empty) {
       const fromRemote: Topic[] = [];
       snap.forEach(d => fromRemote.push(d.data() as Topic));
-      setLocal(LS_TOPICS_KEY, fromRemote);
+
+      const mergedMap = new Map<string, Topic>();
+      // 1. Put current local topics into map first (preserve uploaded files)
+      for (const t of getLocal<Topic[]>(LS_TOPICS_KEY, localList)) {
+        mergedMap.set(t.id, t);
+      }
+      // 2. Merge remote fields without overwriting attached study materials if local has them
+      for (const r of fromRemote) {
+        const local = mergedMap.get(r.id);
+        if (local) {
+          mergedMap.set(r.id, {
+            ...r,
+            studyMaterialName: local.studyMaterialName || r.studyMaterialName,
+            studyMaterialUrl: local.studyMaterialUrl || r.studyMaterialUrl,
+            studyMaterialSize: local.studyMaterialSize || r.studyMaterialSize,
+            studyMaterialText: local.studyMaterialText || r.studyMaterialText,
+          });
+        } else {
+          mergedMap.set(r.id, r);
+        }
+      }
+      setLocal(LS_TOPICS_KEY, Array.from(mergedMap.values()));
     }
   }).catch(() => {});
-  return cached;
+
+  return localList;
 }
 
 export async function saveTopic(topic: Topic): Promise<void> {
@@ -156,6 +179,9 @@ export async function saveTopic(topic: Topic): Promise<void> {
 export async function removeTopic(topicId: string): Promise<void> {
   const current = getLocal<Topic[]>(LS_TOPICS_KEY, []);
   setLocal(LS_TOPICS_KEY, current.filter(t => t.id !== topicId));
+  try {
+    localStorage.removeItem(`qp_b64_mat_${topicId}`);
+  } catch {}
   deleteDoc(doc(db, 'topics', topicId)).catch(() => {});
 }
 
