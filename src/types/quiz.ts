@@ -44,6 +44,7 @@ export interface Quiz {
   totalQuestions: number; // strictly 20
   timeLimitMinutes: number; // default 15 or 20 minutes
   questionIds: string[]; // 20 question IDs
+  questionsList?: Question[]; // Embedded questions for resilience across devices
   participantCount: number;
   submissionCount: number;
   createdBy: string;

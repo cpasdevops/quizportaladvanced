@@ -5,6 +5,7 @@ import {
   fetchTopics,
   fetchQuestions,
   fetchResults,
+  saveQuiz,
 } from '../../firebase/service';
 import { TopicManager } from './TopicManager';
 import { QuestionManager } from './QuestionManager';
@@ -53,6 +54,11 @@ export const AdminDashboard: React.FC = () => {
     setTopics(fetchedTopics);
     setQuestions(fetchedQuestions);
     setSubmissionCount(fetchedResults.length);
+
+    // Ensure all quizzes are synchronized to Firestore cloud so students on any device can find them
+    for (const q of fetchedQuizzes) {
+      saveQuiz(q).catch(() => {});
+    }
 
     // Pick active quiz if any, or latest
     const live = fetchedQuizzes.find((q) => q.status === 'active') || fetchedQuizzes[0] || null;

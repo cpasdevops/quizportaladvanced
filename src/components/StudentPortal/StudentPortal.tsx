@@ -32,6 +32,16 @@ export const StudentPortal: React.FC = () => {
     setCandidateName(name);
     setCandidateEmail(email || '');
 
+    if (quiz.questionsList && quiz.questionsList.length > 0) {
+      setAllQuestions((prev) => {
+        const map = new Map<string, Question>(prev.map((q) => [q.id, q]));
+        for (const q of quiz.questionsList!) {
+          map.set(q.id, q);
+        }
+        return Array.from(map.values());
+      });
+    }
+
     // If admin hasn't started the quiz yet, place student in the Waiting Lobby!
     if (quiz.status === 'draft') {
       setViewState('waiting');
@@ -42,6 +52,15 @@ export const StudentPortal: React.FC = () => {
 
   const handleQuizActivatedByAdmin = (activatedQuiz: Quiz) => {
     setActiveQuiz(activatedQuiz);
+    if (activatedQuiz.questionsList && activatedQuiz.questionsList.length > 0) {
+      setAllQuestions((prev) => {
+        const map = new Map<string, Question>(prev.map((q) => [q.id, q]));
+        for (const q of activatedQuiz.questionsList!) {
+          map.set(q.id, q);
+        }
+        return Array.from(map.values());
+      });
+    }
     setViewState('instructions');
   };
 

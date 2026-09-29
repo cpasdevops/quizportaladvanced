@@ -234,15 +234,27 @@ export async function removeQuestion(questionId: string): Promise<void> {
 // Broadcast key for instant cross-tab sync
 export const LS_QUIZ_STATUS_BROADCAST = 'qp_broadcast_status_v1';
 
+// Helper to clean undefined values before sending to Firestore
+export function sanitizeForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const clean: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) {
+      clean[k] = v;
+    }
+  }
+  return clean;
+}
+
 // Helper to merge local and remote quizzes with local active priority
 function mergeQuizzes(localList: Quiz[], remoteList: Quiz[]): Quiz[] {
   const map = new Map<string, Quiz>();
   // 1. Put remote first
   for (const r of remoteList) {
-    map.set(r.id, r);
+    if (r && r.id) map.set(r.id, r);
   }
   // 2. Local takes priority
   for (const l of localList) {
+    if (!l || !l.id) continue;
     const rem = map.get(l.id);
     if (rem) {
       const isActive = l.status === 'active' || rem.status === 'active';
@@ -281,17 +293,33 @@ export async function fetchQuizzes(): Promise<Quiz[]> {
 export async function fetchQuizByCode(code: string): Promise<Quiz | null> {
   const upper = code.trim().toUpperCase();
   const all = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
-  const foundLocal = all.find(q => q.code.toUpperCase() === upper);
+  const foundLocal = all.find(q => q.code && q.code.trim().toUpperCase() === upper);
   if (foundLocal) return foundLocal;
 
   try {
     const qCol = collection(db, 'quizzes');
+    // 1. Exact match query
     const snap = await getDocs(query(qCol, where('code', '==', upper)));
     if (!snap.empty) {
       const q = snap.docs[0].data() as Quiz;
-      all.unshift(q);
-      setLocal(LS_QUIZZES_KEY, all);
+      const cur = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
+      cur.unshift(q);
+      setLocal(LS_QUIZZES_KEY, cur);
       return q;
+    }
+
+    // 2. Fallback scan in case of casing / format mismatch
+    const allSnap = await getDocs(qCol);
+    if (!allSnap.empty) {
+      for (const d of allSnap.docs) {
+        const q = d.data() as Quiz;
+        if (q.code && q.code.trim().toUpperCase() === upper) {
+          const cur = getLocal<Quiz[]>(LS_QUIZZES_KEY, [SEED_QUIZ]);
+          cur.unshift(q);
+          setLocal(LS_QUIZZES_KEY, cur);
+          return q;
+        }
+      }
     }
   } catch (err) {
     console.info('Quiz lookup via Firestore failed:', err);
@@ -311,8 +339,9 @@ export async function saveQuiz(quiz: Quiz): Promise<void> {
     window.dispatchEvent(new CustomEvent('quiz-status-changed', { detail: { quizId: quiz.id, status: quiz.status } }));
   } catch {}
 
-  // Background non-blocking sync
-  setDoc(doc(db, 'quizzes', quiz.id), quiz).catch(err => {
+  // Non-blocking sync to Firestore with clean payload
+  const cleanData = sanitizeForFirestore(quiz);
+  setDoc(doc(db, 'quizzes', quiz.id), cleanData, { merge: true }).catch(err => {
     console.warn('Firestore quiz save error:', err);
   });
 }
@@ -343,13 +372,20 @@ export async function updateQuizStatus(quizId: string, status: QuizStatus): Prom
     window.dispatchEvent(new CustomEvent('quiz-status-changed', { detail: { quizId, status } }));
   } catch {}
 
-  // Firestore update
-  const payload: Partial<Quiz> = { status };
-  if (status === 'active') payload.startedAt = new Date().toISOString();
-  if (status === 'completed' || status === 'cancelled') payload.endedAt = new Date().toISOString();
-  setDoc(doc(db, 'quizzes', quizId), payload, { merge: true }).catch(err => {
-    console.warn('Firestore quiz status update error:', err);
-  });
+  // Sync full quiz to Firestore so all fields (code, title, questions) remain intact
+  if (quiz) {
+    const cleanData = sanitizeForFirestore(quiz);
+    setDoc(doc(db, 'quizzes', quizId), cleanData, { merge: true }).catch(err => {
+      console.warn('Firestore quiz status update error:', err);
+    });
+  } else {
+    const payload: Partial<Quiz> = { status };
+    if (status === 'active') payload.startedAt = new Date().toISOString();
+    if (status === 'completed' || status === 'cancelled') payload.endedAt = new Date().toISOString();
+    setDoc(doc(db, 'quizzes', quizId), payload, { merge: true }).catch(err => {
+      console.warn('Firestore quiz status update error:', err);
+    });
+  }
 }
 
 /**

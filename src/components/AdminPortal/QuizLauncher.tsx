@@ -178,7 +178,8 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
         currentApproved = [...currentApproved, ...generated];
       }
 
-      const selectedIds = currentApproved.slice(0, questionCount).map((q) => q.id);
+      const selectedQuestions = currentApproved.slice(0, questionCount);
+      const selectedIds = selectedQuestions.map((q) => q.id);
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       let code = '';
       for (let i = 0; i < 6; i++) {
@@ -195,6 +196,7 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
         totalQuestions: selectedIds.length,
         timeLimitMinutes: Number(timeLimit) || 20,
         questionIds: selectedIds,
+        questionsList: selectedQuestions,
         participantCount: 0,
         submissionCount: 0,
         createdBy: 'admin-vidya',
