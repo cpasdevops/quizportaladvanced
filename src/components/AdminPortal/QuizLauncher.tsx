@@ -25,7 +25,10 @@ import {
   Loader2,
   Check,
   BookOpen,
+  FileSpreadsheet,
+  FileText,
 } from 'lucide-react';
+import { exportQuestionsToExcel, exportQuestionsToPdf } from '../../utils/exportQuestions';
 
 interface QuizLauncherProps {
   currentQuiz: Quiz | null;
@@ -391,6 +394,42 @@ export const QuizLauncher: React.FC<QuizLauncherProps> = ({
                   <Copy className="w-4 h-4 text-indigo-400" />
                   <span>{copiedLink ? 'Link Copied!' : 'Copy Student Link'}</span>
                 </button>
+
+                {/* Export Quiz Questions in Excel / PDF */}
+                {currentQuiz.questionsList && currentQuiz.questionsList.length > 0 && (
+                  <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        exportQuestionsToExcel(
+                          currentQuiz.questionsList!,
+                          `quiz_${currentQuiz.code}`,
+                          currentQuiz.topicName || currentQuiz.title
+                        )
+                      }
+                      className="flex items-center gap-1.5 px-3 py-2 hover:bg-slate-700 text-emerald-300 text-xs font-bold rounded-lg transition"
+                      title="Download 20 quiz questions in Excel (.xlsx)"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span>Excel</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        exportQuestionsToPdf(
+                          currentQuiz.questionsList!,
+                          `quiz_${currentQuiz.code}`,
+                          currentQuiz.topicName || currentQuiz.title
+                        )
+                      }
+                      className="flex items-center gap-1.5 px-3 py-2 hover:bg-slate-700 text-rose-300 text-xs font-bold rounded-lg transition"
+                      title="Download 20 quiz questions in PDF (.pdf)"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>PDF</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Status Helper */}

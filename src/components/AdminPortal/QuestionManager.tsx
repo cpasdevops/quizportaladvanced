@@ -7,6 +7,7 @@ import {
   downloadSampleCsvTemplate,
   downloadSampleJsonTemplate,
 } from '../../utils/questionParser';
+import { exportQuestionsToExcel, exportQuestionsToPdf } from '../../utils/exportQuestions';
 import {
   CheckCircle2,
   XCircle,
@@ -198,6 +199,29 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
+            {topicQuestions.length > 0 && (
+              <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => exportQuestionsToExcel(topicQuestions, 'topic_questions', currentTopic?.name)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-slate-700 text-emerald-300 text-xs font-bold rounded-lg transition"
+                  title="Download all questions in this topic in Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Excel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => exportQuestionsToPdf(topicQuestions, 'topic_questions', currentTopic?.name)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-slate-700 text-rose-300 text-xs font-bold rounded-lg transition"
+                  title="Download all questions in this topic in PDF (.pdf)"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>PDF</span>
+                </button>
+              </div>
+            )}
+
             <button
               onClick={() => {
                 setShowUploadModal(true);
@@ -515,11 +539,49 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
             ) : (
               /* Generated Preview Screen */
               <div className="flex-1 flex flex-col overflow-hidden space-y-4">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-emerald-400">
-                    ✓ Successfully generated {generatedPreview.length} questions!
-                  </span>
-                  <span className="text-slate-400">Review before saving to pool</span>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs pb-3 border-b border-slate-800">
+                  <div>
+                    <span className="font-bold text-emerald-400">
+                      ✓ Successfully generated {generatedPreview.length} questions!
+                    </span>
+                    <span className="text-slate-400 block text-[11px]">
+                      Topic: <strong className="text-slate-300">{currentTopic?.name}</strong>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        exportQuestionsToExcel(
+                          generatedPreview,
+                          'ai_generated_questions',
+                          currentTopic?.name
+                        )
+                      }
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition shadow-sm"
+                      title="Download generated questions as Excel spreadsheet (.xlsx)"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                      <span>Download Excel</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        exportQuestionsToPdf(
+                          generatedPreview,
+                          'ai_generated_questions',
+                          currentTopic?.name
+                        )
+                      }
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-500/40 rounded-xl text-xs font-bold transition shadow-sm"
+                      title="Download generated questions as printable PDF document (.pdf)"
+                    >
+                      <FileText className="w-4 h-4 text-rose-400" />
+                      <span>Download PDF</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-3 pr-1">
@@ -550,7 +612,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                   ))}
                 </div>
 
-                <div className="pt-2 flex justify-between items-center gap-3 border-t border-slate-800">
+                <div className="pt-3 flex flex-wrap justify-between items-center gap-3 border-t border-slate-800">
                   <button
                     type="button"
                     onClick={() => setGeneratedPreview(null)}
@@ -559,14 +621,46 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                     ← Re-generate
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={handleSaveGeneratedQuestions}
-                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center gap-2"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>Approve & Save {generatedPreview.length} Questions to Topic</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        exportQuestionsToExcel(
+                          generatedPreview,
+                          'ai_generated_questions',
+                          currentTopic?.name
+                        )
+                      }
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 transition flex items-center gap-1.5"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Excel (.xlsx)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        exportQuestionsToPdf(
+                          generatedPreview,
+                          'ai_generated_questions',
+                          currentTopic?.name
+                        )
+                      }
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl border border-slate-700 transition flex items-center gap-1.5"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-rose-400" />
+                      <span>PDF (.pdf)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSaveGeneratedQuestions}
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Approve & Save {generatedPreview.length} Questions</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
