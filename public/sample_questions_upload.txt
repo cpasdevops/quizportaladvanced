@@ -1,0 +1,159 @@
+1. What fundamental attribute distinguishes categorical data from numerical data?
+A) Does it identify a discrete category or quantify a numerical measurement?
+B) Is the measurement positive or negative?
+C) Was it collected recently or historically?
+D) Does it require floating-point arithmetic?
+Answer: A
+Explanation: Categorical data assigns items into distinct classes, whereas numerical data quantifies amounts or counts.
+
+2. Which of the following represents an ordinal categorical data type?
+A) Customer satisfaction rating (Poor, Fair, Good, Excellent)
+B) Blood type group (A, B, AB, O)
+C) Telephone area code
+D) Computer processor serial number
+Answer: A
+Explanation: Ordinal data has an explicit, natural ranking order among categories with non-uniform intervals.
+
+3. Which of the following is an example of continuous numerical data rather than discrete?
+A) The ambient temperature of a laboratory server room over time
+B) The total number of students logged into an exam session
+C) The count of defect items in a shipment batch
+D) The number of hospital beds available in a ward
+Answer: A
+Explanation: Continuous data can take on any real value along an unbroken scale, whereas counts are discrete integers.
+
+4. When constructing bar charts for categorical comparison, why must the baseline start at zero?
+A) To prevent deceptive visual distortion of relative bar height ratios
+B) To ensure bar charts fit within default printer margins
+C) Because SVG vector graphics do not support non-zero origins
+D) To force gridlines to be calculated as integers
+Answer: A
+Explanation: Truncating the baseline distorts proportional lengths, misleading readers about actual magnitude ratios.
+
+5. When should a horizontal bar chart be preferred over a vertical column chart?
+A) When category labels are lengthy and would truncate or slant vertically
+B) When tracking continuous price movements across 500 trading days
+C) When illustrating proportions of a single whole under 4 parts
+D) When displaying multi-dimensional 3D surfaces
+Answer: A
+Explanation: Horizontal bar charts allow long textual labels to be read naturally left-to-right without diagonal tilting.
+
+6. What is the primary analytical question addressed by descriptive analytics?
+A) What specific events have historically occurred based on verified records?
+B) What will happen in the next financial quarter with certainty?
+C) What optimal decision algorithm should be executed next?
+D) How can outlier data points be silently removed?
+Answer: A
+Explanation: Descriptive analytics summarizes historical and empirical data to characterize what has already occurred.
+
+7. In predictive analytics using Generative AI models, what essential accompaniment is required?
+A) Clear communication of uncertainty bounds, error margins, and confidence intervals
+B) An absolute guarantee that future predictions are 100% deterministic
+C) The removal of all training baseline comparison sets
+D) Omitting all documentation of model hyperparameter choices
+Answer: A
+Explanation: Predictive algorithms inherently produce probabilistic estimates that require clear uncertainty disclosure.
+
+8. How does prescriptive analytics differ from descriptive and predictive analytics?
+A) It formulates and recommends specific actionable decisions to optimize outcomes
+B) It only records past ledger entries without future forecasting
+C) It focuses exclusively on plotting 2D static visual graphics
+D) It removes human oversight from critical safety protocols
+Answer: A
+Explanation: Prescriptive analytics identifies the optimal course of action based on predictions and constraint objectives.
+
+9. Which visualization format is recommended for illustrating trend velocity and change over continuous time intervals?
+A) A continuous line chart with chronological ordering on the horizontal axis
+B) A 3D exploded pie chart with 20 slices
+C) A radar spider chart with random categorical ordering
+D) A horizontal stacked cylinder bar chart
+Answer: A
+Explanation: Line charts effectively communicate rate, continuity, and temporal trajectory across uninterrupted intervals.
+
+10. What is the primary risk of representational bias in generative machine learning models?
+A) Training data underrepresents marginalized cohorts, producing skewed model behaviors
+B) Processing units consume too much memory during backpropagation
+C) Database tables contain too many normalized foreign keys
+D) API responses return structured JSON instead of plain markdown
+Answer: A
+Explanation: When training sets lack balanced diversity, model inference reflects disparities and fails on minority groups.
+
+11. Why must pie charts generally be restricted to five or fewer slices?
+A) Human visual perception struggles to accurately judge non-aligned angle and arc slices
+B) Pie charts cannot support decimal percentage calculations
+C) Web browsers cannot render circular SVG geometry efficiently
+D) Hexadecimal color palettes do not support more than five hues
+Answer: A
+Explanation: Comparing multiple angular wedges without a common baseline is perceptually difficult and error-prone.
+
+12. In structured versus unstructured data architectures, which format represents unstructured data?
+A) Medical clinical notes recorded in free-form physician dictation
+B) A relational SQL table with predefined primary and foreign keys
+C) A comma-separated spreadsheet with rigid typed columns
+D) A database catalog index with integer keys
+Answer: A
+Explanation: Free-form natural language text lacks a standardized relational schema and represents unstructured data.
+
+13. What role does a tamper-evident audit log serve in examination and compliance platforms?
+A) Provides an immutable chronological record of candidate interactions and submissions
+B) Allows candidates to overwrite previous answers after grading completion
+C) Reduces server database size by deleting previous test histories
+D) Automatically marks incorrect answers as correct during network drops
+Answer: A
+Explanation: Audit logs guarantee transparency, accountability, and academic integrity by preserving timestamped activity.
+
+14. When presenting visual dashboards to non-technical executives, what is the best practice?
+A) Lead with clear contextual narrative insights rather than raw unannotated numbers
+B) Include as many decorative 3D textures and animations as possible
+C) Display complex mathematical proofs on the summary slide
+D) Remove all axis titles to give the interface a minimalist design
+Answer: A
+Explanation: Effective data storytelling translates complex analytics into clear, actionable executive insights.
+
+15. Which metric measures algorithmic fairness by evaluating whether error rates are equal across protected groups?
+A) Equalized odds and false positive parity
+B) Floating point operations per second (FLOPS)
+C) Average response latency in milliseconds
+D) Total parameter storage footprint in gigabytes
+Answer: A
+Explanation: Equalized odds verifies that true positive and false positive rates remain equivalent across demographic classes.
+
+16. What is a critical anti-pattern when designing machine learning training pipelines?
+A) Data leakage from test splits into training datasets
+B) Conducting cross-validation across multiple random folds
+C) Documenting feature provenance and data licenses
+D) Implementing automated regression integration suites
+Answer: A
+Explanation: Data leakage contaminates training data with target test signals, creating misleadingly optimistic accuracy.
+
+17. If an examinee experiences an unexpected network disconnect during an online quiz, what must the client do?
+A) Persist answered questions locally in browser storage and resynchronize upon reconnect
+B) Immediately submit a blank test and invalidate the candidate session
+C) Crash the user browser tab with an unhandled fatal exception
+D) Reset all previously answered questions back to unanswered state
+Answer: A
+Explanation: Robust client-side architecture caches state in local storage to withstand transient network failures seamlessly.
+
+18. Why is qualitative data crucial even when rich quantitative metrics are readily available?
+A) Qualitative insights explain the human 'why' and emotional nuance behind the numbers
+B) Qualitative data eliminates the necessity of statistical significance testing
+C) Qualitative feedback can be parsed instantly by simple integer additions
+D) Qualitative notes never require subjective interpretation
+Answer: A
+Explanation: Numbers show the magnitude of behavior, but qualitative feedback uncovers the underlying motivations and context.
+
+19. What is the primary benefit of standardized multiple-choice question distraction design?
+A) Distractors target common student misconceptions to evaluate true diagnostic comprehension
+B) Distractors trick candidates with obscure grammatical technicalities
+C) Distractors should all be blatantly obvious so everyone answers correctly
+D) Distractors should be identical to the correct answer to increase difficulty
+Answer: A
+Explanation: Effective distractors diagnose conceptual misunderstandings rather than testing trivia or syntactic trickery.
+
+20. What is the ultimate goal of integrating disciplined data storytelling with Generative AI?
+A) Empowering humans to make verified, ethical, and evidence-based strategic decisions
+B) Replacing human leadership with unmonitored autonomous algorithms
+C) Generating visual graphics rapidly without evaluating data authenticity
+D) Automating assessments without providing feedback to learners
+Answer: A
+Explanation: Ethical data storytelling combines computational capabilities with critical human discernment for impactful decisions.

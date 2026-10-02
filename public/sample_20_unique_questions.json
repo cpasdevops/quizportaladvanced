@@ -1,0 +1,222 @@
+[
+  {
+    "questionText": "What fundamental attribute distinguishes categorical data from numerical data?",
+    "options": [
+      "Does it identify a discrete category or quantify a numerical measurement?",
+      "Is the measurement positive or negative?",
+      "Was it collected recently or historically?",
+      "Does it require floating-point arithmetic?"
+    ],
+    "correctOption": 0,
+    "explanation": "Categorical data assigns items into distinct classes or groups, whereas numerical data quantifies amounts or counts."
+  },
+  {
+    "questionText": "Which of the following represents an ordinal categorical data type?",
+    "options": [
+      "Customer satisfaction rating (Poor, Fair, Good, Excellent)",
+      "Blood type group (A, B, AB, O)",
+      "Telephone area code",
+      "Computer processor serial number"
+    ],
+    "correctOption": 0,
+    "explanation": "Ordinal data has an explicit, natural ranking order among categories with non-uniform intervals."
+  },
+  {
+    "questionText": "Which of the following is an example of continuous numerical data rather than discrete?",
+    "options": [
+      "The ambient temperature of a laboratory server room over time",
+      "The total number of students logged into an exam session",
+      "The count of defect items in a shipment batch",
+      "The number of hospital beds available in a ward"
+    ],
+    "correctOption": 0,
+    "explanation": "Continuous data can take on any real value along an unbroken scale, whereas counts are discrete integers."
+  },
+  {
+    "questionText": "When constructing bar charts for categorical comparison, why must the baseline start at zero?",
+    "options": [
+      "To prevent deceptive visual distortion of relative bar height ratios",
+      "To ensure bar charts fit within default printer margins",
+      "Because SVG vector graphics do not support non-zero origins",
+      "To force gridlines to be calculated as integers"
+    ],
+    "correctOption": 0,
+    "explanation": "Truncating the baseline distorts proportional lengths, misleading readers about actual magnitude ratios."
+  },
+  {
+    "questionText": "When should a horizontal bar chart be preferred over a vertical column chart?",
+    "options": [
+      "When category labels are lengthy and would truncate or slant vertically",
+      "When tracking continuous price movements across 500 trading days",
+      "When illustrating proportions of a single whole under 4 parts",
+      "When displaying multi-dimensional 3D surfaces"
+    ],
+    "correctOption": 0,
+    "explanation": "Horizontal bar charts allow long textual labels to be read naturally left-to-right without diagonal tilting."
+  },
+  {
+    "questionText": "What is the primary analytical question addressed by descriptive analytics?",
+    "options": [
+      "What specific events have historically occurred based on verified records?",
+      "What will happen in the next financial quarter with certainty?",
+      "What optimal decision algorithm should be executed next?",
+      "How can outlier data points be silently removed?"
+    ],
+    "correctOption": 0,
+    "explanation": "Descriptive analytics summarizes historical and empirical data to characterize what has already occurred."
+  },
+  {
+    "questionText": "In predictive analytics using Generative AI models, what essential accompaniment is required?",
+    "options": [
+      "Clear communication of uncertainty bounds, error margins, and confidence intervals",
+      "An absolute guarantee that future predictions are 100% deterministic",
+      "The removal of all training baseline comparison sets",
+      "Omitting all documentation of model hyperparameter choices"
+    ],
+    "correctOption": 0,
+    "explanation": "Predictive algorithms inherently produce probabilistic estimates that require clear uncertainty disclosure."
+  },
+  {
+    "questionText": "How does prescriptive analytics differ from descriptive and predictive analytics?",
+    "options": [
+      "It formulates and recommends specific actionable decisions to optimize outcomes",
+      "It only records past ledger entries without future forecasting",
+      "It focuses exclusively on plotting 2D static visual graphics",
+      "It removes human oversight from critical safety protocols"
+    ],
+    "correctOption": 0,
+    "explanation": "Prescriptive analytics identifies the optimal course of action based on predictions and constraint objectives."
+  },
+  {
+    "questionText": "Which visualization format is recommended for illustrating trend velocity and change over continuous time intervals?",
+    "options": [
+      "A continuous line chart with chronological ordering on the horizontal axis",
+      "A 3D exploded pie chart with 20 slices",
+      "A radar spider chart with random categorical ordering",
+      "A horizontal stacked cylinder bar chart"
+    ],
+    "correctOption": 0,
+    "explanation": "Line charts effectively communicate rate, continuity, and temporal trajectory across uninterrupted intervals."
+  },
+  {
+    "questionText": "What is the primary risk of representational bias in generative machine learning models?",
+    "options": [
+      "Training data underrepresents marginalized cohorts, producing skewed model behaviors",
+      "Processing units consume too much memory during backpropagation",
+      "Database tables contain too many normalized foreign keys",
+      "API responses return structured JSON instead of plain markdown"
+    ],
+    "correctOption": 0,
+    "explanation": "When training sets lack balanced diversity, model inference reflects disparities and fails on minority groups."
+  },
+  {
+    "questionText": "Why must pie charts generally be restricted to five or fewer slices?",
+    "options": [
+      "Human visual perception struggles to accurately judge non-aligned angle and arc slices",
+      "Pie charts cannot support decimal percentage calculations",
+      "Web browsers cannot render circular SVG geometry efficiently",
+      "Hexadecimal color palettes do not support more than five hues"
+    ],
+    "correctOption": 0,
+    "explanation": "Comparing multiple angular wedges without a common baseline is perceptually difficult and error-prone."
+  },
+  {
+    "questionText": "In structured versus unstructured data architectures, which format represents unstructured data?",
+    "options": [
+      "Medical clinical notes recorded in free-form physician dictation",
+      "A relational SQL table with predefined primary and foreign keys",
+      "A comma-separated spreadsheet with rigid typed columns",
+      "A database catalog index with integer keys"
+    ],
+    "correctOption": 0,
+    "explanation": "Free-form natural language text lacks a standardized relational schema and represents unstructured data."
+  },
+  {
+    "questionText": "What role does a tamper-evident audit log serve in examination and compliance platforms?",
+    "options": [
+      "Provides an immutable chronological record of candidate interactions and submissions",
+      "Allows candidates to overwrite previous answers after grading completion",
+      "Reduces server database size by deleting previous test histories",
+      "Automatically marks incorrect answers as correct during network drops"
+    ],
+    "correctOption": 0,
+    "explanation": "Audit logs guarantee transparency, accountability, and academic integrity by preserving timestamped activity."
+  },
+  {
+    "questionText": "When presenting visual dashboards to non-technical executives, what is the best practice?",
+    "options": [
+      "Lead with clear contextual narrative insights rather than raw unannotated numbers",
+      "Include as many decorative 3D textures and animations as possible",
+      "Display complex mathematical proofs on the summary slide",
+      "Remove all axis titles to give the interface a minimalist design"
+    ],
+    "correctOption": 0,
+    "explanation": "Effective data storytelling translates complex analytics into clear, actionable executive insights."
+  },
+  {
+    "questionText": "Which metric measures algorithmic fairness by evaluating whether error rates are equal across protected groups?",
+    "options": [
+      "Equalized odds and false positive parity",
+      "Floating point operations per second (FLOPS)",
+      "Average response latency in milliseconds",
+      "Total parameter storage footprint in gigabytes"
+    ],
+    "correctOption": 0,
+    "explanation": "Equalized odds verifies that true positive and false positive rates remain equivalent across demographic classes."
+  },
+  {
+    "questionText": "What is a critical anti-pattern when designing machine learning training pipelines?",
+    "options": [
+      "Data leakage from test splits into training datasets",
+      "Conducting cross-validation across multiple random folds",
+      "Documenting feature provenance and data licenses",
+      "Implementing automated regression integration suites"
+    ],
+    "correctOption": 0,
+    "explanation": "Data leakage contaminates training data with target test signals, creating misleadingly optimistic accuracy."
+  },
+  {
+    "questionText": "If an examinee experiences an unexpected network disconnect during an online quiz, what must the client do?",
+    "options": [
+      "Persist answered questions locally in browser storage and resynchronize upon reconnect",
+      "Immediately submit a blank test and invalidate the candidate session",
+      "Crash the user browser tab with an unhandled fatal exception",
+      "Reset all previously answered questions back to unanswered state"
+    ],
+    "correctOption": 0,
+    "explanation": "Robust client-side architecture caches state in local storage to withstand transient network failures seamlessly."
+  },
+  {
+    "questionText": "Why is qualitative data crucial even when rich quantitative metrics are readily available?",
+    "options": [
+      "Qualitative insights explain the human 'why' and emotional nuance behind the numbers",
+      "Qualitative data eliminates the necessity of statistical significance testing",
+      "Qualitative feedback can be parsed instantly by simple integer additions",
+      "Qualitative notes never require subjective interpretation"
+    ],
+    "correctOption": 0,
+    "explanation": "Numbers show the magnitude of behavior, but qualitative feedback uncovers the underlying motivations and context."
+  },
+  {
+    "questionText": "What is the primary benefit of standardized multiple-choice question distraction design?",
+    "options": [
+      "Distractors target common student misconceptions to evaluate true diagnostic comprehension",
+      "Distractors trick candidates with obscure grammatical technicalities",
+      "Distractors should all be blatantly obvious so everyone answers correctly",
+      "Distractors should be identical to the correct answer to increase difficulty"
+    ],
+    "correctOption": 0,
+    "explanation": "Effective distractors diagnose conceptual misunderstandings rather than testing trivia or syntactic trickery."
+  },
+  {
+    "questionText": "What is the ultimate goal of integrating disciplined data storytelling with Generative AI?",
+    "options": [
+      "Empowering humans to make verified, ethical, and evidence-based strategic decisions",
+      "Replacing human leadership with unmonitored autonomous algorithms",
+      "Generating visual graphics rapidly without evaluating data authenticity",
+      "Automating assessments without providing feedback to learners"
+    ],
+    "correctOption": 0,
+    "explanation": "Ethical data storytelling combines computational capabilities with critical human discernment for impactful decisions."
+  }
+]

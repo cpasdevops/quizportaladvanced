@@ -1,0 +1,40 @@
+================================================================================
+COURSE SYLLABUS & STUDY GUIDE: ETHICAL DATA SCIENCE & GENERATIVE AI
+================================================================================
+
+1. FOUNDATIONS OF DATA ARCHITECTURES
+- Categorical vs Numerical Data:
+  * Categorical Data: Identifies group memberships or qualitative attributes.
+    - Nominal: Unranked discrete groups (e.g., blood types A, B, AB, O; department names; nationality).
+    - Ordinal: Explicit ordered categories with non-uniform intervals (e.g., customer ratings: Poor, Fair, Good, Excellent; educational degrees: High School, Bachelor's, Master's, Doctorate).
+  * Numerical Data: Quantifies measurable magnitude or countable occurrence.
+    - Discrete: Countable integer values (e.g., total student attendance count, server CPU count).
+    - Continuous: Measurable along an infinite continuum with decimals (e.g., ambient temperature in Celsius, processing latency in milliseconds, weight in kilograms).
+  * Qualitative vs Quantitative: Qualitative captures nuance, motivations, and the human "why"; quantitative provides numerical rigor and magnitude.
+  * Structured vs Unstructured Data: Structured data fits rigid tabular schemas (SQL tables, CSV rows); unstructured data lacks predefined relational models (clinical dictations, audio streams, customer emails).
+
+2. VISUALIZATION HEURISTICS & DATA STORYTELLING
+- Honest Visual Baselines:
+  * Bar and Column Charts must ALWAYS originate at a baseline of zero. Truncating the vertical Y-axis falsely exaggerates minute variances and deceives stakeholders.
+- Chart Selection Matrix:
+  * Vertical Column Charts: Compare discrete categories with short textual labels.
+  * Horizontal Bar Charts: Optimal when category labels are lengthy, enabling horizontal left-to-right reading without tilting or truncated text.
+  * Continuous Line Charts: Ideal for continuous chronological intervals to display trend velocity and change trajectory.
+  * Area Charts: Depict volume or cumulative magnitude beneath a trend line.
+  * Pie Charts: Limited to five or fewer slices. Human visual cognition cannot reliably calculate angular areas without a common baseline. Never use 3D pie charts.
+
+3. ANALYTICAL HORIZONS
+- Descriptive Analytics: Documents historical telemetry. Answers: "What happened in the system?"
+- Diagnostic Analytics: Examines root causes and correlations. Answers: "Why did it happen?"
+- Predictive Analytics: Probabilistic forecasting with mathematical models. Answers: "What is likely to happen next?" Requires explicit error margins, confidence bounds, and disclosure of stochastic uncertainty.
+- Prescriptive Analytics: Formulates actionable optimization strategies. Answers: "What specific decision should we take to achieve optimal outcomes?"
+
+4. ETHICAL GOVERNANCE IN GENERATIVE AI & AUDITABILITY
+- Algorithmic Fairness & Bias Mitigation:
+  * Representational bias stems from skewed historical training distributions that underrepresent protected groups.
+  * Auditing requires assessing Equalized Odds and Demographic Parity across sensitive demographic cohorts.
+- Data Provenance & Integrity:
+  * Training and evaluation pipelines must enforce strict boundaries to prevent data leakage from test partitions into training folds.
+- Resilience & Exam System Integrity:
+  * Assessment engines must provide tamper-evident audit logs with verifiable timestamps for academic integrity.
+  * Candidate clients must maintain resilient local persistence during transient network dropouts and resynchronize automatically upon reconnection.

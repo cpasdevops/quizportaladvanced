@@ -1,0 +1,44 @@
+================================================================================
+EXAM SYLLABUS & STUDY MATERIAL: GENERATIVE AI, DATA SCIENCE & ETHICAL SYSTEMS
+================================================================================
+
+MODULE 1: DATA TYPES & ARCHITECTURAL FOUNDATIONS
+- Categorical vs. Numerical Data:
+  * Categorical Data: Qualitatively classifies items into distinct groups or attributes.
+    - Nominal Categorical: No inherent ranking or natural hierarchy among categories. Examples: blood type (A, B, AB, O), department names, machine IP subnets.
+    - Ordinal Categorical: Possesses an explicit, meaningful rank order, although numerical differences between ranks are not uniform. Examples: satisfaction scales (Poor, Fair, Good, Excellent), academic letter grades (A, B, C, D, F).
+  * Numerical Data: Measures concrete mathematical amounts, rates, or counts.
+    - Discrete Numerical: Countable finite integer values without fractional increments. Examples: student attendance headcounts, error ticket quantities.
+    - Continuous Numerical: Measures values along an unbroken continuum with decimals and infinite subdivisions. Examples: ambient temperature in Celsius, processing latency in milliseconds, weight in kilograms.
+  * Structured vs. Unstructured Data:
+    - Structured: Strictly defined schemas, relational database tables, and rigid column definitions.
+    - Unstructured: Free-form text, physician clinical dictations, video feeds, customer service call audio.
+
+MODULE 2: DATA VISUALIZATION RULES & PRESENTATION STORYTELLING
+- Baseline Integrity & Chart Principles:
+  * Zero-Origin Baseline Rule: Vertical column charts and horizontal bar charts MUST always start at a true zero baseline. Truncating the vertical axis exaggerates small variations and misinforms stakeholders.
+  * Bar Chart vs. Column Chart:
+    - Use horizontal bar charts when category labels are lengthy, allowing human readers to read naturally from left to right without tilted text.
+    - Use vertical column charts for discrete categories with short numeric or chronological labels.
+  * Line Charts: Best suited for displaying velocity, continuity, and trends over uninterrupted chronological time intervals.
+  * Pie Chart Constraints: Limit to five or fewer slices. Human visual cognition cannot accurately estimate non-aligned angular proportions. 3D pie charts should never be used in professional reporting.
+  * Area Charts: Best for visualizing the cumulative magnitude or volume beneath a trend line.
+
+MODULE 3: ANALYTICS HORIZONS & COGNITIVE MODES
+- The Four Analytics Disciplines:
+  1. Descriptive Analytics: Summarizes empirical historical telemetry. Core inquiry: "What happened in the system?"
+  2. Diagnostic Analytics: Investigates underlying causes, anomalies, and correlations. Core inquiry: "Why did it happen?"
+  3. Predictive Analytics: Generates probabilistic forecasts using machine learning and historical patterns. Core inquiry: "What is likely to happen next?" Mandatory requirement: Must always publish explicit confidence intervals, error margins, and uncertainty bounds.
+  4. Prescriptive Analytics: Formulates actionable decision recommendations to achieve targeted business outcomes. Core inquiry: "What specific steps should be executed?"
+
+MODULE 4: RESPONSIBLE GENERATIVE AI, BIAS & SECURITY AUDITING
+- Representational Bias & Demographic Parity:
+  * Skewed training data produces algorithmic disparities against underrepresented groups.
+  * Auditing requires evaluating Equalized Odds (matching false positive and false negative rates across groups) and Demographic Parity.
+- Data Provenance & Test Contamination:
+  * Strict isolation between training sets and evaluation splits prevents data leakage.
+  * Data leakage artificially inflates evaluation metrics and leads to failure in production environments.
+- Assessment Integrity & Fault Tolerance:
+  * Examination platforms require immutable, tamper-evident audit logs with verifiable timestamps.
+  * Offline Resilience: Client applications must persist student responses locally during network drops and automatically synchronize upon reconnection.
+================================================================================

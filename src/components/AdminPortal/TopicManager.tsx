@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Topic } from '../../types/quiz';
 import { saveTopic, removeTopic, uploadStudyMaterial } from '../../firebase/service';
 import { downloadMaterial } from '../../utils/fileStore';
+import { downloadSampleStudyMaterialTemplate } from '../../utils/questionParser';
 import {
   BookOpen,
   Plus,
@@ -394,10 +395,21 @@ export const TopicManager: React.FC<TopicManagerProps> = ({
 
               {/* PDF File Upload Zone */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                  <FileUp className="w-4 h-4 text-indigo-400" />
-                  <span>Upload Study Material (PDF, DOCX, TXT)</span>
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <FileUp className="w-4 h-4 text-indigo-400" />
+                    <span>Upload Study Material (PDF, DOCX, TXT)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={downloadSampleStudyMaterialTemplate}
+                    className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 font-medium"
+                    title="Download Sample Study Material Syllabus text file"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>Sample Syllabus TXT</span>
+                  </button>
+                </div>
 
                 <div
                   onClick={() => fileInputRef.current?.click()}
