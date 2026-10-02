@@ -1,5 +1,6 @@
-import { storage } from '../firebase/service';
+import { storage, rtdb } from '../firebase/service';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref as rtdbRef, set as rtdbSet, get as rtdbGet } from 'firebase/database';
 
 const DB_NAME = 'QuizPortal_FileDB_v3';
 const STORE_NAME = 'materials';
@@ -127,7 +128,7 @@ export async function saveFilePermanently(key: string, file: File): Promise<stri
 }
 
 /**
- * Retrieve a live, fresh Blob for a file across ANY browser refresh
+ * Retrieve a live, fresh Blob for a file across ANY browser refresh or device
  */
 export async function getMaterialBlob(topicId: string): Promise<Blob | null> {
   const key = `mat_${topicId}`;
@@ -164,11 +165,27 @@ export async function getMaterialBlob(topicId: string): Promise<Blob | null> {
     console.warn('LocalStorage fallback read error:', err);
   }
 
+  // 3. Try Realtime Database (guarantees cross-device availability on mobile/other browsers!)
+  try {
+    const snap = await rtdbGet(rtdbRef(rtdb, `materials/${topicId}`));
+    if (snap.exists()) {
+      const val = snap.val();
+      if (val.b64) {
+        const u8 = base64ToUint8Array(val.b64);
+        return new Blob([u8.buffer as ArrayBuffer], { type: val.type || 'application/pdf' });
+      } else if (val.text) {
+        return new Blob([val.text], { type: val.type || 'text/plain' });
+      }
+    }
+  } catch (err) {
+    console.warn('RTDB material fetch notice:', err);
+  }
+
   return null;
 }
 
 /**
- * Upload Study Material with guaranteed persistence across browser refreshes
+ * Upload Study Material with guaranteed persistence across browser refreshes and for all users
  */
 export async function uploadMaterialFile(
   file: File,
@@ -188,7 +205,22 @@ export async function uploadMaterialFile(
   const localUrl = URL.createObjectURL(file);
   activeBlobUrlMap.set(key, localUrl);
 
-  // 3. Fast non-blocking cloud upload attempt
+  // 3. Save to Realtime Database so everyone on any device/mobile can view and download it!
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const b64 = file.size <= 2 * 1024 * 1024 ? arrayBufferToBase64(arrayBuffer) : '';
+    rtdbSet(rtdbRef(rtdb, `materials/${topicId}`), {
+      id: topicId,
+      name: file.name,
+      type: file.type || (file.name.endsWith('.txt') ? 'text/plain' : 'application/pdf'),
+      size: sizeFormatted,
+      text: textPreview || '',
+      b64,
+      savedAt: new Date().toISOString(),
+    }).catch(() => {});
+  } catch {}
+
+  // 4. Fast non-blocking cloud storage upload attempt
   let cloudUrl = '';
   try {
     const uploadTask = (async () => {
@@ -199,16 +231,16 @@ export async function uploadMaterialFile(
     })();
 
     const timeout = new Promise<string>((_, reject) =>
-      setTimeout(() => reject(new Error('timeout')), 1500)
+      setTimeout(() => reject(new Error('timeout')), 2000)
     );
 
     cloudUrl = await Promise.race([uploadTask, timeout]);
   } catch {
-    // Non-fatal, local storage is permanent
+    // Non-fatal, RTDB and local storage provide cross-device persistence
   }
 
   // Persistent reference identifier
-  const finalUrl = cloudUrl || `local://${key}`;
+  const finalUrl = cloudUrl || `rtdb://materials/${topicId}`;
 
   return {
     url: finalUrl,

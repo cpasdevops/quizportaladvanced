@@ -140,35 +140,34 @@ if (!localStorage.getItem(LS_RESULTS_KEY)) {
 export async function fetchTopics(): Promise<Topic[]> {
   const localList = getLocal<Topic[]>(LS_TOPICS_KEY, [SEED_TOPIC]);
 
-  // Non-blocking background sync with Firestore that MERGES rather than overwriting
-  getDocs(collection(db, 'topics')).then(snap => {
-    if (!snap.empty) {
-      const fromRemote: Topic[] = [];
-      snap.forEach(d => fromRemote.push(d.data() as Topic));
-
-      const mergedMap = new Map<string, Topic>();
-      // 1. Put current local topics into map first (preserve uploaded files)
-      for (const t of getLocal<Topic[]>(LS_TOPICS_KEY, localList)) {
-        mergedMap.set(t.id, t);
-      }
-      // 2. Merge remote fields without overwriting attached study materials if local has them
-      for (const r of fromRemote) {
-        const local = mergedMap.get(r.id);
-        if (local) {
-          mergedMap.set(r.id, {
-            ...r,
-            studyMaterialName: local.studyMaterialName || r.studyMaterialName,
-            studyMaterialUrl: local.studyMaterialUrl || r.studyMaterialUrl,
-            studyMaterialSize: local.studyMaterialSize || r.studyMaterialSize,
-            studyMaterialText: local.studyMaterialText || r.studyMaterialText,
-          });
-        } else {
-          mergedMap.set(r.id, r);
+  // Background sync with Realtime Database (accessible by everyone across all browsers and devices)
+  try {
+    rtdbGet(rtdbRef(rtdb, 'topics')).then(snap => {
+      if (snap.exists()) {
+        const val = snap.val();
+        const remoteList: Topic[] = Object.values(val);
+        const mergedMap = new Map<string, Topic>();
+        for (const t of getLocal<Topic[]>(LS_TOPICS_KEY, localList)) {
+          mergedMap.set(t.id, t);
         }
+        for (const r of remoteList) {
+          const local = mergedMap.get(r.id);
+          if (local) {
+            mergedMap.set(r.id, {
+              ...r,
+              studyMaterialName: local.studyMaterialName || r.studyMaterialName,
+              studyMaterialUrl: local.studyMaterialUrl || r.studyMaterialUrl,
+              studyMaterialSize: local.studyMaterialSize || r.studyMaterialSize,
+              studyMaterialText: local.studyMaterialText || r.studyMaterialText,
+            });
+          } else {
+            mergedMap.set(r.id, r);
+          }
+        }
+        setLocal(LS_TOPICS_KEY, Array.from(mergedMap.values()));
       }
-      setLocal(LS_TOPICS_KEY, Array.from(mergedMap.values()));
-    }
-  }).catch(() => {});
+    }).catch(() => {});
+  } catch {}
 
   return localList;
 }
@@ -180,10 +179,14 @@ export async function saveTopic(topic: Topic): Promise<void> {
   else current.unshift(topic);
   setLocal(LS_TOPICS_KEY, current);
 
-  // Background cloud sync - non-blocking
-  setDoc(doc(db, 'topics', topic.id), topic).catch(err => {
-    console.warn('Background topic sync info:', err);
-  });
+  // Sync to Realtime Database so everyone on all devices sees the topic and its materials
+  try {
+    const clean = JSON.parse(JSON.stringify(topic));
+    rtdbSet(rtdbRef(rtdb, `topics/${topic.id}`), clean).catch(() => {});
+  } catch {}
+
+  // Background cloud fallback
+  setDoc(doc(db, 'topics', topic.id), topic).catch(() => {});
 }
 
 export async function removeTopic(topicId: string): Promise<void> {
@@ -191,6 +194,8 @@ export async function removeTopic(topicId: string): Promise<void> {
   setLocal(LS_TOPICS_KEY, current.filter(t => t.id !== topicId));
   try {
     localStorage.removeItem(`qp_b64_mat_${topicId}`);
+    rtdbRemove(rtdbRef(rtdb, `topics/${topicId}`)).catch(() => {});
+    rtdbRemove(rtdbRef(rtdb, `materials/${topicId}`)).catch(() => {});
   } catch {}
   deleteDoc(doc(db, 'topics', topicId)).catch(() => {});
 }
@@ -198,17 +203,24 @@ export async function removeTopic(topicId: string): Promise<void> {
 // ================= QUESTIONS =================
 export async function fetchQuestions(topicId?: string): Promise<Question[]> {
   const all = getLocal<Question[]>(LS_QUESTIONS_KEY, SEED_QUESTIONS);
-  // Fast background fetch
-  const qCol = collection(db, 'questions');
-  (topicId ? getDocs(query(qCol, where('topicId', '==', topicId))) : getDocs(qCol))
-    .then(snap => {
-      if (!snap.empty) {
-        const list: Question[] = [];
-        snap.forEach(d => list.push(d.data() as Question));
-        if (!topicId) setLocal(LS_QUESTIONS_KEY, list);
+
+  // Sync from Realtime Database (accessible by everyone)
+  try {
+    rtdbGet(rtdbRef(rtdb, 'questions')).then(snap => {
+      if (snap.exists()) {
+        const val = snap.val();
+        const remoteList: Question[] = Object.values(val);
+        const map = new Map<string, Question>();
+        for (const q of getLocal<Question[]>(LS_QUESTIONS_KEY, SEED_QUESTIONS)) {
+          map.set(q.id, q);
+        }
+        for (const r of remoteList) {
+          map.set(r.id, r);
+        }
+        setLocal(LS_QUESTIONS_KEY, Array.from(map.values()));
       }
-    })
-    .catch(() => {});
+    }).catch(() => {});
+  } catch {}
 
   return topicId ? all.filter(q => q.topicId === topicId) : all;
 }
@@ -219,6 +231,11 @@ export async function saveQuestion(question: Question): Promise<void> {
   if (idx >= 0) all[idx] = question;
   else all.push(question);
   setLocal(LS_QUESTIONS_KEY, all);
+
+  try {
+    const clean = JSON.parse(JSON.stringify(question));
+    rtdbSet(rtdbRef(rtdb, `questions/${question.id}`), clean).catch(() => {});
+  } catch {}
 
   setDoc(doc(db, 'questions', question.id), question).catch(() => {});
 }
@@ -231,13 +248,24 @@ export async function saveQuestionsBatch(questions: Question[]): Promise<void> {
   }
   setLocal(LS_QUESTIONS_KEY, Array.from(map.values()));
 
-  // Background non-blocking sync
+  // Sync all questions to Realtime Database so everyone on any device can access them
+  try {
+    const cleanList = JSON.parse(JSON.stringify(questions));
+    for (const q of cleanList) {
+      rtdbSet(rtdbRef(rtdb, `questions/${q.id}`), q).catch(() => {});
+    }
+  } catch {}
+
+  // Background non-blocking fallback
   Promise.all(questions.map(q => setDoc(doc(db, 'questions', q.id), q).catch(() => {}))).catch(() => {});
 }
 
 export async function removeQuestion(questionId: string): Promise<void> {
   const all = getLocal<Question[]>(LS_QUESTIONS_KEY, []);
   setLocal(LS_QUESTIONS_KEY, all.filter(q => q.id !== questionId));
+  try {
+    rtdbRemove(rtdbRef(rtdb, `questions/${questionId}`)).catch(() => {});
+  } catch {}
   deleteDoc(doc(db, 'questions', questionId)).catch(() => {});
 }
 
