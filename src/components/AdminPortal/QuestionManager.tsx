@@ -1,7 +1,15 @@
 import React, { useState, useRef } from 'react';
 import { Question, Topic } from '../../types/quiz';
-import { saveQuestion, saveQuestionsBatch, removeQuestion } from '../../firebase/service';
-import { generateQuestionsForTopic } from '../../services/aiQuestionGenerator';
+import {
+  saveQuestion,
+  saveQuestionsBatch,
+  removeQuestion,
+  replaceTopicQuestions,
+} from '../../firebase/service';
+import {
+  generateQuestionsForTopic,
+  deduplicateQuestionList,
+} from '../../services/aiQuestionGenerator';
 import {
   parseQuestionsFromFileContent,
   downloadSampleCsvTemplate,
@@ -50,6 +58,7 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
   // AI Generator state
   const [showAiModal, setShowAiModal] = useState(false);
   const [generateCount, setGenerateCount] = useState<number>(20);
+  const [replaceExistingPool, setReplaceExistingPool] = useState<boolean>(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedPreview, setGeneratedPreview] = useState<Question[] | null>(null);
 
@@ -126,9 +135,20 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
     }
   };
 
+  const handleDeduplicateCurrentTopic = async () => {
+    if (!currentTopic || topicQuestions.length === 0) return;
+    const clean20 = deduplicateQuestionList(topicQuestions, currentTopic, 20);
+    await replaceTopicQuestions(currentTopic.id, clean20);
+    onRefresh();
+  };
+
   const handleSaveGeneratedQuestions = async () => {
-    if (!generatedPreview || generatedPreview.length === 0) return;
-    await saveQuestionsBatch(generatedPreview);
+    if (!generatedPreview || generatedPreview.length === 0 || !currentTopic) return;
+    if (replaceExistingPool) {
+      await replaceTopicQuestions(currentTopic.id, generatedPreview);
+    } else {
+      await saveQuestionsBatch(generatedPreview);
+    }
     setGeneratedPreview(null);
     setShowAiModal(false);
     onRefresh();
@@ -302,6 +322,18 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
               </span>
             </span>
 
+            {topicQuestions.length > 20 && (
+              <button
+                type="button"
+                onClick={handleDeduplicateCurrentTopic}
+                className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-full text-xs font-bold transition shadow-sm"
+                title="Deduplicate questions and keep exactly 20 unique questions"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Fix Pool: Clean & Keep 20 Unique</span>
+              </button>
+            )}
+
             {topicQuestions.length >= 20 && approvedCount < 20 && (
               <button
                 onClick={handleBatchApproveFirst20}
@@ -313,6 +345,26 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Warning banner if topic has excessive or duplicate questions */}
+      {topicQuestions.length > 20 && (
+        <div className="p-4 bg-amber-950/40 border border-amber-500/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 text-amber-200">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              This topic contains <strong>{topicQuestions.length} questions</strong>. Click Clean & Keep 20 to remove any duplicates and keep <strong>only 20 unique questions</strong>.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleDeduplicateCurrentTopic}
+            className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl transition shadow-md shrink-0 flex items-center gap-1.5"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Clean & Keep 20 Unique</span>
+          </button>
+        </div>
+      )}
 
       {/* Questions List */}
       <div className="space-y-3">
@@ -507,6 +559,25 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                   </div>
                 </div>
 
+                <div className="p-3.5 bg-indigo-950/40 border border-indigo-500/30 rounded-xl space-y-1.5">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs text-white">
+                    <input
+                      type="checkbox"
+                      checked={replaceExistingPool}
+                      onChange={(e) => setReplaceExistingPool(e.target.checked)}
+                      className="accent-indigo-500 w-4 h-4 rounded cursor-pointer shrink-0"
+                    />
+                    <span className="font-bold">
+                      Set topic pool to only {generateCount} unique questions (Replaces any old repeats)
+                    </span>
+                  </label>
+                  <p className="text-[11px] text-slate-400 pl-6">
+                    {replaceExistingPool
+                      ? 'Guarantees the topic will contain only these fresh, non-repeating unique questions.'
+                      : 'Appends to current pool without clearing older questions.'}
+                  </p>
+                </div>
+
                 <div className="pt-4 flex justify-end gap-3">
                   <button
                     type="button"
@@ -612,14 +683,25 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                   ))}
                 </div>
 
-                <div className="pt-3 flex flex-wrap justify-between items-center gap-3 border-t border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setGeneratedPreview(null)}
-                    className="text-xs text-slate-400 hover:text-white"
-                  >
-                    ← Re-generate
-                  </button>
+                <div className="pt-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-t border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setGeneratedPreview(null)}
+                      className="text-xs text-slate-400 hover:text-white"
+                    >
+                      ← Re-generate
+                    </button>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-300 ml-2">
+                      <input
+                        type="checkbox"
+                        checked={replaceExistingPool}
+                        onChange={(e) => setReplaceExistingPool(e.target.checked)}
+                        className="accent-indigo-500 w-3.5 h-3.5 rounded"
+                      />
+                      <span>Reset pool to only these {generatedPreview.length} questions</span>
+                    </label>
+                  </div>
 
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -658,7 +740,11 @@ export const QuestionManager: React.FC<QuestionManagerProps> = ({
                       className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center gap-2"
                     >
                       <Check className="w-4 h-4" />
-                      <span>Approve & Save {generatedPreview.length} Questions</span>
+                      <span>
+                        {replaceExistingPool
+                          ? `Set as Topic's ${generatedPreview.length} Unique Questions`
+                          : `Append ${generatedPreview.length} Questions`}
+                      </span>
                     </button>
                   </div>
                 </div>

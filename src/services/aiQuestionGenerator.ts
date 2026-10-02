@@ -9,10 +9,64 @@ interface GeneratedQ {
 }
 
 /**
+ * Normalizes question text for robust deduplication comparison
+ */
+export function normalizeQuestionStem(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/^(question\s*\d*:?|q\s*\d*:?|\d+[\.\)]\s*|\[.*?\]\s*)/gi, '')
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 45);
+}
+
+/**
+ * Deduplicates any question list, keeping only unique questions.
+ * If fewer than targetCount remain, supplements with fresh non-repeating questions to reach exactly targetCount.
+ * If more than targetCount exist, limits to targetCount (e.g. 20).
+ */
+export function deduplicateQuestionList(
+  questions: Question[],
+  topic: Topic,
+  targetCount: number = 20
+): Question[] {
+  const uniqueList: Question[] = [];
+  const seen = new Set<string>();
+
+  for (const q of questions) {
+    if (!q || !q.questionText) continue;
+    const key = normalizeQuestionStem(q.questionText);
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueList.push({
+        ...q,
+        approved: true,
+      });
+      if (uniqueList.length >= targetCount) break;
+    }
+  }
+
+  // If fewer than targetCount, supplement with diverse questions from syllabus
+  if (uniqueList.length < targetCount) {
+    const fillers = generateContextualSyllabusQuestions(topic, 20);
+    for (const f of fillers) {
+      const key = normalizeQuestionStem(f.questionText);
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueList.push(f);
+        if (uniqueList.length >= targetCount) break;
+      }
+    }
+  }
+
+  return uniqueList.slice(0, targetCount);
+}
+
+/**
  * Intelligent topic question generator
- * 1. Tries server-side proxy /api/generate-questions with Gemini 3.8 Flash
+ * 1. Tries server-side proxy /api/generate-questions with Gemini
  * 2. Tries client-side Gemini if API key is in environment
- * 3. Fallback: Robust non-repetitive contextual question generator ensuring 20 completely unique questions
+ * 3. Fallback: Robust non-repetitive contextual question generator
+ * Guarantees exactly `count` (default 20) 100% UNIQUE questions.
  */
 export async function generateQuestionsForTopic(
   topic: Topic,
@@ -36,7 +90,7 @@ export async function generateQuestionsForTopic(
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.questions) && data.questions.length > 0) {
-        return data.questions.slice(0, count).map((item: any, idx: number) => ({
+        const mapped = data.questions.map((item: any, idx: number) => ({
           id: `ai-${topic.id}-${Date.now()}-${idx + 1}`,
           topicId: topic.id,
           questionText: item.questionText,
@@ -52,6 +106,8 @@ export async function generateQuestionsForTopic(
           approved: true,
           createdAt: new Date().toISOString(),
         }));
+
+        return deduplicateQuestionList(mapped, topic, count);
       }
     }
   } catch {
@@ -102,7 +158,7 @@ Rules:
       const parsed: GeneratedQ[] = JSON.parse(cleanJson);
 
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.slice(0, count).map((item, idx) => ({
+        const mapped = parsed.map((item, idx) => ({
           id: `ai-${topic.id}-${Date.now()}-${idx + 1}`,
           topicId: topic.id,
           questionText: item.questionText,
@@ -118,6 +174,8 @@ Rules:
           approved: true,
           createdAt: new Date().toISOString(),
         }));
+
+        return deduplicateQuestionList(mapped, topic, count);
       }
     } catch {
       // Proceed to fallback
@@ -125,7 +183,8 @@ Rules:
   }
 
   // 3. Fallback: High-diversity, non-repetitive question generator
-  return generateContextualSyllabusQuestions(topic, count);
+  const generated = generateContextualSyllabusQuestions(topic, count);
+  return deduplicateQuestionList(generated, topic, count);
 }
 
 /**
@@ -411,7 +470,6 @@ function generateContextualSyllabusQuestions(topic: Topic, count: number): Quest
     const sentenceForThisQ = uniqueSentences.length > 0 ? uniqueSentences[i % uniqueSentences.length] : '';
 
     let stem = dimension.stem(subject, sentenceForThisQ);
-    // If stem was somehow seen, make it uniquely distinct
     if (usedStems.has(stem)) {
       stem = `[Domain Mastery • Concept ${i + 1}] ${stem}`;
     }

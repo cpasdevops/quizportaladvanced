@@ -269,6 +269,34 @@ export async function removeQuestion(questionId: string): Promise<void> {
   deleteDoc(doc(db, 'questions', questionId)).catch(() => {});
 }
 
+/**
+ * Replaces all questions for a specific topic with a clean, deduplicated set (e.g. exactly 20 unique questions)
+ */
+export async function replaceTopicQuestions(topicId: string, newQuestions: Question[]): Promise<void> {
+  const all = getLocal<Question[]>(LS_QUESTIONS_KEY, SEED_QUESTIONS);
+
+  // 1. Remove existing questions of this topic from RTDB
+  const oldForTopic = all.filter(q => q.topicId === topicId);
+  for (const oq of oldForTopic) {
+    try {
+      rtdbRemove(rtdbRef(rtdb, `questions/${oq.id}`)).catch(() => {});
+    } catch {}
+  }
+
+  // 2. Keep questions from other topics, replace this topic's questions completely
+  const others = all.filter(q => q.topicId !== topicId);
+  const updatedAll = [...others, ...newQuestions];
+  setLocal(LS_QUESTIONS_KEY, updatedAll);
+
+  // 3. Sync clean new questions to RTDB for all users
+  try {
+    const cleanList = JSON.parse(JSON.stringify(newQuestions));
+    for (const q of cleanList) {
+      rtdbSet(rtdbRef(rtdb, `questions/${q.id}`), q).catch(() => {});
+    }
+  } catch {}
+}
+
 // Broadcast key for instant cross-tab sync
 export const LS_QUIZ_STATUS_BROADCAST = 'qp_broadcast_status_v1';
 

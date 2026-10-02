@@ -79,7 +79,25 @@ MANDATORY RULES:
       const parsed = JSON.parse(cleanJson);
 
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return res.json({ questions: parsed });
+        // Enforce strict uniqueness on question text
+        const uniqueQuestions: any[] = [];
+        const seenStems = new Set<string>();
+
+        for (const item of parsed) {
+          if (!item.questionText) continue;
+          const normalized = item.questionText
+            .toLowerCase()
+            .replace(/^(question\s*\d*:?|q\s*\d*:?|\d+[\.\)]\s*|\[.*?\]\s*)/gi, '')
+            .replace(/[^a-z0-9]/g, '')
+            .slice(0, 45);
+
+          if (!seenStems.has(normalized)) {
+            seenStems.add(normalized);
+            uniqueQuestions.push(item);
+          }
+        }
+
+        return res.json({ questions: uniqueQuestions.slice(0, count) });
       } else {
         return res.status(500).json({ error: 'Invalid response structure from Gemini' });
       }
